@@ -4,7 +4,7 @@
 
 这份规格只定设计，不写代码。所有“现状”都附了 `文件:行`，行号以 2026-11-13 各仓库的工作区为准；zim、im、zymi-services、zymi-ios 的工作区里有别人没提交的改动，行号可能会小幅偏移。
 
-本稿配套的验收数据是 `fixtures/links/vectors.json`，共 70 条，见 §4.5。
+本稿配套的验收数据是 `fixtures/links/vectors.json`，共 75 条，见 §4.5。
 
 ---
 
@@ -19,7 +19,7 @@
 | B1 | 范围 | **v1 只做 ZYMI 的 zim 和 zymi-ios。** Unseal 和 ZYMIX 只保证旧链接还能用。Android 和 Windows（包括工作区里已有的 Unseal 安卓客户端和 Unseal Electron 客户端，见 §2.9）先挂起 | A1、W1、X1–X3。如果把 Unseal 纳入范围，而 Unseal 又开了联邦，§8.2 的服务器检查也要重写 |
 | B2 | 链接域名 | **全部做成配置项**，代码里不写死。示例值：`to.zymi.app`（prod）、`to-dev.zymi.app`、`to-testing.zymi.app` | P2、P3、Z2、S2、Z4、S4 |
 | B3 | 生产环境的 Team ID、Bundle ID、scheme 和签名指纹 | **没有默认值，留空** | 被它阻塞：P2（AASA 和 assetlinks 的内容）、Z4、S4、prod 发布线的 handoff 向量、落地页的商店链接、Smart App Banner |
-| B4 | zim 有几条发布线 | **只有 dev 一条。** Debug 构建另外注册 `zim-debug` scheme，E2E 用它定位到被测的那一份 App；`zim` 照旧留给分享扩展 | Z1、§6.2 |
+| B4 | zim 有几条发布线 | **对外只有 dev 一条**（Release 连 dev 网关）。Debug 构建连本地 E2E 栈，`server_name` 不同（`localhost:8448`），所以它有自己的一份配置：发布线 `local`，scheme `zim-debug`，host 用 `to-local.zymi.test`（只给 E2E 用）。E2E 靠 `zim-debug` 定位到被测的那一份 App；`zim` 照旧留给分享扩展和 Release | Z1、§5.3、§6.2 |
 | B5 | 落地页托管 | **用能跑边缘函数的托管**，例如 Cloudflare Workers 或 Pages Functions（只是举例，不是选定） | P1、P3 |
 | B6 | 去不去掉 ZYMIX 发出的 pill 改写（I1b） | **交给 ZYMIX 的负责人定。** 在他答复之前，I1b 不做 | I1b、X2 |
 
@@ -173,11 +173,11 @@
 
 1. **用 WHATWG URL 规范解析整串输入。** 语法定义在**规范化之后**的结果上：点段已经折叠，https 里的 `\` 已经变成 `/`，host 已经转成小写，默认端口已经去掉。Rust 的 `url` crate 和浏览器的 `URL` 都符合这个规范；Foundation 的 `URLComponents` 和 Android 的 `Uri` **不符合**，平台代码**不能自己解析**，必须交给 zymi-core。
 2. 按 scheme 和 host 分流：
-   - `https` 加本发布线的 host（端口必须是默认端口，不能带用户名或密码，否则判为 `malformed`）→ 按规范路径解析。路径恰好是 `/` 的，那是网站首页 → `not_ours`。
+   - `https` 加本发布线的 host，并且是默认端口 → 按规范路径解析；带用户名或密码判为 `malformed`；路径恰好是 `/` 的，那是网站首页 → `not_ours`。端口不是默认端口的，算另一个 origin，不是我们的 host → `not_ours`。
    - `https` 加别的发布线的 host → `other_lane`，并带上那条发布线的名字。
    - `https`，并且去掉 query 和片段以后**整串等于**某个旧前缀（配置项 `legacy.fragment_bases`）→ 按旧片段解析；没有 `#/` 的话 → `not_ours`。
-   - 本构建注册的 scheme 加 host `open`（大小写不敏感）→ 按规范路径解析；host 是别的（`share`、`connectors`、`wallet`）→ `not_ours`，交回原来的处理逻辑。
-   - `matrix:` → 按 MSC2312 解析。
+   - 本构建配置里列出的任意一个 scheme，加 host `open`（大小写不敏感）→ 按规范路径解析；路径为空（`<scheme>://open`）判为 `malformed`；host 是别的（`share`、`connectors`、`wallet`）→ `not_ours`。不在本构建配置里的 scheme → `not_ours`。
+   - `matrix:` → 按 MSC2312 解析，**只认 `u`、`r`、`roomid`**；其他 kind（包括 Zymi 对象）判为 `unknown_kind`。
    - 旧 scheme（配置项 `legacy.schemes`：`zymix`、`zymixdemo` 的 host 都是 `unseal`）→ 按旧 ZYMIX 写法解析。
    - 其他任何情况 → `not_ours`。
 3. 路径：允许结尾有**一个**斜杠；**先按字面上的 `/` 切段**，出现空段就判 `malformed`（这样 `//evil` 永远不会变成协议相对地址）。
@@ -202,7 +202,7 @@
 | 结果 | 含义 | App 的处理 |
 |---|---|---|
 | `{link, source}` | 是我们的链接，并且合法 | 路由过去（§5、§8） |
-| `{reject: malformed / unknown_kind / reserved / foreign_server}` | 是我们的链接，但不合法 | 提示“链接无效”；如果是 `unknown_kind` 或 `reserved`，改为提示“请更新 App”；**不交给系统** |
+| `{reject: malformed / unknown_kind / reserved / foreign_server}` | 是我们的链接，但不合法 | `malformed`、`foreign_server` 提示“链接无效”；`unknown_kind` 提示“打不开这个链接，可能需要更新 App”（`+group`、`/U/` 这类也走这句）；`reserved` 提示“请更新 App”。**都不交给系统** |
 | `{other_lane: <名字>}` | 是我们另一条发布线的链接 | 提示“这是 <名字> 环境的链接”，不打开 |
 | `{not_ours: true}` | 不是我们的链接 | 按原来的规则处理，比如交给系统浏览器 |
 
@@ -221,14 +221,14 @@
 
 ### 4.5 测试向量 `fixtures/links/vectors.json`（L1）
 
-- 共 70 条：生成 13 条，解析 57 条。解析的 57 条里，规范写法和 scheme 写法 17 条，应当拒绝或判为“不是我们的”23 条，旧写法 12 条，旧写法里应当拒绝的 5 条。每条都附一句说明。
-- 用了两条**测试用的**发布线配置（`prod`、`dev`），不代表真实部署。prod 的 scheme 等 B3 定了再补，所以现在没有 handoff 向量。
+- 共 75 条：生成 13 条，解析 62 条。解析的 62 条里，规范写法和 scheme 写法 18 条，应当拒绝或判为“不是我们的”26 条，旧写法 12 条，旧写法里应当拒绝的 6 条。每条都附一句说明。
+- 用了三份**测试用的、按构建划分**的配置，不代表真实部署：`prod`（scheme 等 B3，所以没有 handoff 向量）；`dev`（`server_name` 假定和 prod 一样是 `zymi.app`，未确认，见评审 U6；scheme 是 `zymi-dev` 和 `zim`）；`local`（zim Debug 连本地 E2E 栈，`localhost:8448`，`zim-debug`）。解析器接受配置里列出的每一个 scheme。
 - 覆盖到的情况：
-  - v12 和旧写法两种房间 ID；带端口的 server name；标准 base64 的事件 ID；UTF-8 别名；含 `/` 的别名。
+  - v12 和旧写法两种房间 ID；带端口的 server name（含端口不一致）；非默认端口；`<scheme>://open` 空路径；别的构建的 scheme；`matrix:` 下的 Zymi kind；标准 base64 的事件 ID；UTF-8 别名；含 `/` 的别名。
   - 编码过的 `:`；点段和 `%2e%2e`；反斜杠；空段；大写的 kind；结尾斜杠；host 的大小写和默认端口。
   - 跨发布线的链接；凭据；`http`；`share` 和 `connectors` 这两个 host；`#//evil.example/`；陌生 host 上的旧片段；`web-instance` 和 `client` 两个参数。
 - 每个实现的测试都要做两件事：跑完全部向量；把每条生成出来的 url 和 handoff 再解析一遍，结果必须和原来的 link 相同（来回）。
-- 写本稿时，我在 scratchpad 里用 node 的 WHATWG `URL` 写了一份参考实现，70 条全部通过。我故意改错其中两条，检查确实失败了。这份参考实现**不提交**，只用来证明向量本身前后一致。
+- 写本稿时，我在 scratchpad 里用 node 的 WHATWG `URL` 写了一份参考实现（`/private/tmp/claude-501/-Users-jelf-Projects-work-zim/4c7627bd-ec56-49a6-b260-6b8f3ad252d6/scratchpad/links-ref.mjs`，运行 `node links-ref.mjs <vectors.json>`），75 条全部通过。我故意改错其中两条，检查确实失败了。这份参考实现**不提交**，只用来证明向量本身前后一致；scratchpad 会被清理，C1 的测试才是长期的证明。
 - **改向量要先改这一份，再同步到 zymi-services**（C1）。
 
 ---
@@ -244,7 +244,9 @@
 
 ### 5.2 每个 App 只有一个 `LinkRouter`
 
-- `LinkRouter.open(url)` 的流程：调 `link_parse`，然后路由到聊天、Zymi 页面或提示；结果是 `not_ours` 才交给系统。
+- `LinkRouter.open(url, origin)` 的流程：调 `link_parse`，然后路由到聊天、Zymi 页面或提示。结果是 `not_ours` 时，要看 URL 是从哪来的：
+  - **系统送进来的**（`onOpenURL`、`onContinueUserActivity`）：交回原来的处理逻辑（比如 `zim://share?inbox=` 交给 ShareInbox；OAuth 回调只认 `ASWebAuthenticationSession`），没有对应的处理逻辑就丢掉。**绝不交回给系统**，否则 `zim://share` 这类链接会被系统送回 App 本身，形成循环。
+  - **App 内点到的**：按原来的过滤规则（只放行 http 和 https，不能带凭据）交给系统。
 - 系统送来的 URL 和用户在 App 内点到的 URL 都只走这一个入口：
   - 系统送来的：`.onOpenURL` 和 `onContinueUserActivity`；
   - App 内点到的：IMKit 的 `ChatLinkOpener`，以及 App 自己所有打开 http(s) 的地方。
@@ -254,10 +256,12 @@
 
 ### 5.3 发布线配置
 
+配置**按构建**给出，不是按发布线共用一份；解析器接受配置里列出的每一个 scheme。zim Debug 和 Release 的配置不同（B4）。
+
 ```
 lane = {
   name, hosts: [...], server_name,
-  schemes: { ios?, macos?, android?, windows? },   // 生成 handoff 用；解析时只认本构建注册的 scheme
+  schemes: { ios?, macos?, android?, windows? },   // 生成 handoff 用；解析时接受这里列出的每一个
   legacy: { fragment_bases: [...], schemes: { zymix: "unseal", zymixdemo: "unseal" } },
   other_lanes: { name: [hosts] }
 }
@@ -378,7 +382,7 @@ lane = {
 | ID | 任务 | 状态和证明 |
 |---|---|---|
 | L0 | 负责人确认或推翻 B1–B6 | 规格头部的默认假设一节随之更新 |
-| L1 | `fixtures/links/vectors.json` | **已完成（本稿）**：70 条，参考实现全部通过，变异对照失败 |
+| L1 | `fixtures/links/vectors.json` | **已完成（本稿）**：75 条，参考实现全部通过，变异对照失败 |
 
 ### 9.1 zymi-services（分支 `feat/links`）
 
@@ -408,7 +412,7 @@ lane = {
 
 | ID | 任务 | 怎么证明（XCUITest，用 `scripts/e2e.sh -only-testing:ZIMUITests/DeepLinkTests/...`） |
 |---|---|---|
-| Z1 | Debug 注册 `zim-debug`；`.onOpenURL` 加 `open` 分支，交给 `LinkRouter` | 用 `XCUIApplication().open(url)` 打开链接（**这个 API 在 macOS 上能不能用待确认**；不能用就退回 `NSWorkspace.open(_:withApplicationAt:configuration:)`，指定被测的那份 App）。打开 `zim-debug://open/roomid/<种子 v12 房间>`，中栏显示这个房间；`…/e/<事件>` 跳到消息并高亮；`/task/<id>` 进到任务页；没加入的房间先出确认页；`zim-debug://open/../x` 显示“请更新 App”（`unknown_kind`）；`/u/x:evil.example` 显示“链接无效”。对照：`ShareTests` 照常通过 |
+| Z1 | Debug 注册 `zim-debug`；`.onOpenURL` 加 `open` 分支，交给 `LinkRouter` | 用 `XCUIApplication().open(url)` 打开链接（**这个 API 在 macOS 上能不能用待确认**；不能用就退回 `NSWorkspace.open(_:withApplicationAt:configuration:)`，指定被测的那份 App）。打开 `zim-debug://open/roomid/<种子 v12 房间>`，中栏显示这个房间；`…/e/<事件>` 跳到消息并高亮；`/task/<id>` 进到任务页；没加入的房间先出确认页；`zim-debug://open/../x` 显示“打不开这个链接，可能需要更新 App”（`unknown_kind`）；`/u/x:evil.example` 显示“链接无效”。对照：`ShareTests` 照常通过 |
 | Z2 | 正式构建注入 `ChatLinkBuilder`，同时改掉断言 matrix.to 的那几个测试（`MentionTests.swift:62` 不用改） | 复制出来的房间链接和消息链接等于 `build` 向量的格式；把复制出来的链接再用 Z1 的方式打开，能回到原处。对照：设 `ZIM_E2E_SHARE_LINKS=matrixto` 时，链接是 matrix.to |
 | Z3 | `LinkRouter` 接管 §2.3 列出的 15 处和 IMChatMac 的两处 | 打开调试开关，bob 发一条 `https://<dev host>/task/<id>`，alice 点了以后，日志里出现 `link-route task`，**没有** `debug-open` 或 `link-system`；`https://example.com` 出现 `link-system`。zim 的 `rg` 检查（§5.2）通过 |
 | Z4 | entitlements 加 associated domains，加 `.onContinueUserActivity`（被 B2、B3 阻塞） | 只能在 staging 环境的签名构建上验证，本地跑不了 |
@@ -494,5 +498,5 @@ lane = {
 | S9 | 采纳 | 删掉 `exclude` 那条；预留路径 `/invite/*` 和 `/team/*` 一次写进 AASA |
 | S10 | 采纳 | §1 已改 |
 | 评审 §二：“I2 没有独立的证明” | **不采纳单独测试** | I2 只是把调用改成先问注入点，用户真正能看到的效果只有在宿主里才看得到。按“只用 E2E”的约定，由 Z3 和 S3 来证明更直接；只给 IMKit 写隔离测试，既重复，也证明不了宿主真的接上了 |
-| 本稿自己新增的改动 | — | 旧片段写法只在**白名单前缀**上才认（第一稿写的是任何 host 都认，那样会把陌生网站的链接也拦进 App）；解析结果新增 `not_ours` 和 `other_lane` 两种；向量的权威副本放在本仓库，不再放在 zymi-services |
+| 本稿自己新增的改动 | — | 配置按构建给出，新增 zim Debug 的 `local` 配置（`zim-debug`）；非默认端口算 `not_ours`；`matrix:` 只认 `u`、`r`、`roomid`；`<scheme>://open` 空路径判 `malformed`；系统送进来的 `not_ours` 不再交回系统（§5.2）；`unknown_kind` 的提示改成通用的一句。旧片段写法只在**白名单前缀**上才认（第一稿写的是任何 host 都认，那样会把陌生网站的链接也拦进 App）；解析结果新增 `not_ours` 和 `other_lane` 两种；向量的权威副本放在本仓库，不再放在 zymi-services |
 | U1–U9 | 记录在案 | 都标了待确认，并且放在了会受影响的那一节里：U1 对应 §4.2 第 1 条，U2 对应 B4 和 Z1，U3、U4、U5 对应 §6.2、§6.5 和 Z4、S4，U6 对应 §8.2，U7 对应 B3，U8 对应 B1，U9 对应 F3 那一行 |
