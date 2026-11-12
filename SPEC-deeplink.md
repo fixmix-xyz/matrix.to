@@ -1,33 +1,46 @@
 # 规格：产品分享链接与深链（SPEC-deeplink）
 
-日期：2026-11-13。状态：**草案，等负责人审**。这份规格只定设计，不写代码。所有“现状”都附了 `文件:行`，行号以 2026-11-13 各仓库的工作区为准；zim、im、zymi-services、zymi-ios 的工作区有别人没提交的改动，行号可能会小幅偏移。
+日期：2026-11-13。状态：**第二稿，已按评审修订**。评审结论是“修改后批准”，原文在 `…/8421319f-…/scratchpad/review-spec-deeplink.md`。逐条答复见文末 §12。
+
+这份规格只定设计，不写代码。所有“现状”都附了 `文件:行`，行号以 2026-11-13 各仓库的工作区为准；zim、im、zymi-services、zymi-ios 的工作区里有别人没提交的改动，行号可能会小幅偏移。
+
+本稿配套的验收数据是 `fixtures/links/vectors.json`，共 70 条，见 §4.5。
 
 ---
 
 ## 0. 结论先行
 
-### 0.1 五个关键决定（要负责人点头）
+### 0.1 默认假设（负责人可推翻）
+
+负责人还没有答复的决定，本稿先按下表的默认值写。任何一条被推翻，只影响表里列出的那些任务。
+
+| # | 决定 | 默认值 | 推翻后受影响的任务 |
+|---|---|---|---|
+| B1 | 范围 | **v1 只做 ZYMI 的 zim 和 zymi-ios。** Unseal 和 ZYMIX 只保证旧链接还能用。Android 和 Windows（包括工作区里已有的 Unseal 安卓客户端和 Unseal Electron 客户端，见 §2.9）先挂起 | A1、W1、X1–X3。如果把 Unseal 纳入范围，而 Unseal 又开了联邦，§8.2 的服务器检查也要重写 |
+| B2 | 链接域名 | **全部做成配置项**，代码里不写死。示例值：`to.zymi.app`（prod）、`to-dev.zymi.app`、`to-testing.zymi.app` | P2、P3、Z2、S2、Z4、S4 |
+| B3 | 生产环境的 Team ID、Bundle ID、scheme 和签名指纹 | **没有默认值，留空** | 被它阻塞：P2（AASA 和 assetlinks 的内容）、Z4、S4、prod 发布线的 handoff 向量、落地页的商店链接、Smart App Banner |
+| B4 | zim 有几条发布线 | **只有 dev 一条。** Debug 构建另外注册 `zim-debug` scheme，E2E 用它定位到被测的那一份 App；`zim` 照旧留给分享扩展 | Z1、§6.2 |
+| B5 | 落地页托管 | **用能跑边缘函数的托管**，例如 Cloudflare Workers 或 Pages Functions（只是举例，不是选定） | P1、P3 |
+| B6 | 去不去掉 ZYMIX 发出的 pill 改写（I1b） | **交给 ZYMIX 的负责人定。** 在他答复之前，I1b 不做 | I1b、X2 |
+
+### 0.2 五个关键决定
 
 | # | 决定 | 一句话理由 |
 |---|---|---|
-| D1 | **规范链接放在 URL 路径里，不放在片段（`#/…`）里**，挂在产品自己的专用链接域名上，每条发布线（lane）一个域名，例如 `https://<LINK_HOST>/roomid/<id>`、`/u/<id>`、`/task/<id>`。自定义 scheme `<lane scheme>://open/<同一路径>` 只负责从落地页把链接交给 App。 | 安卓 App Links 在 minSdk 26 上**匹配不了片段**（`zymix-im-android-cloud/gradle/libs.versions.toml:11`；片段匹配要到 API 35 的 `uri-relative-filter-group` 才有）。服务端看得到路径，才能做 404、回退页和预览卡片。各平台的聊天消息里只放行 https 链接，自定义 scheme 会被丢掉。 |
-| D2 | **语法只有一份，配一个共用的测试向量文件。** Zymi 的 App（zim、zymi-ios，以后的安卓和 Windows Zymi 客户端）由 **zymi-core** 负责生成和解析链接。IMKit（im、im-android）**不自带语法**，只提供两个注入点：链接生成器和“应用内拦截链接”。落地页的 JS 和 ZYMIX 要接的话，也跑同一份向量。 | IMKit 现在不依赖 zymi-core（`im/Package.swift` 里没有 zymi），ZYMIX 宿主也不依赖。用“向量文件 + 各自实现”这种做法已有先例：`zymi-services/fixtures/sse-vectors.json` 加 `scripts/sse-parity.sh`。 |
-| D3 | **旧链接一律还能用。** 所有客户端的解析器都认 `https://matrix.to/#/…`、旧落地页的 `…/to-share/#/…?client=…`、`zymix://unseal/…` 和 `matrix:` URI。**@ 提及的 pill 继续用 matrix.to 的片段写法**。新落地页在浏览器里把旧的片段链接换成规范链接。 | 两端判断 pill 的代码已经不看域名，只看片段（`im/Sources/IMMatrix/MatrixHTML.swift:119-140`，`im-android/.../MatrixHtml.kt:137-157`）。pill 不换写法，就不会出现“发送方已经换了、接收方还没更新”的情况。 |
-| D4 | **安全基线：** 落地页不做任何预览，也不请求任何 homeserver。删掉 `client=` 和 `web-instance[…]` 两个参数。落地页只跳到自己拼出来的地址，从不跳到链接里给的地址。加入房间、发起私聊、接受邀请这类会改状态的动作，一律先在 App 内确认。只认自家的 `server_name`。没有权限（403）和不存在（404）对外显示同一句话。 | matrix.to 会按链接里的 `via` 去连任意服务器拉预览（`src/preview/PreviewViewModel.js:46-59`）。ZYMIX 的 `zymix://unseal/room/…` 打开后会直接加入房间（`../matrix.to/src/open/clients/Zymix.js:17-19`）。我们不开联邦（`zim/dev/zymi-homeserver/homeserver.yaml.tmpl:34-35`）。 |
-| D5 | **各平台做法：** iOS 和 macOS 用 universal links（AASA 按路径匹配）加 scheme；安卓用 App Links（`assetlinks.json` 加 `autoVerify` 的路径过滤器）加 scheme；Windows 先注册 scheme，打包成 MSIX 的话再加 App URI Handler，**但 Windows 要等客户端选型以后再定**。在 App 里点到自家链接时，**由 App 自己拦下来跳转**，不交给系统。 | 不能指望系统把 App 里点到的自家链接送回 App。IMKit 现在把 https 链接全交给了系统浏览器（`MessageRowView.swift:439-448`、`HostMessageHooks.swift:61-69`、`IMChatMac/Message.swift:372-374`）。 |
-
-### 0.2 需要负责人回答的问题（详见 §11）
-
-Q1 链接属于哪个产品、用哪个域名（ZYMI 用 `zymi.app`？ZYMIX 用 `zymix.io`？还是 `pagepeek.ai`？）。Q2 每条发布线的子域名怎么起。Q3 生产环境的 Bundle ID、Team ID，安卓包名和 Play 签名指纹。Q4 ZYMI 和 ZYMIX 装在同一台设备上时，聊天链接归哪个 App。Q5 Windows 客户端用什么技术、放在哪个仓库。Q6 落地页托管在哪里、DNS 归谁管。Q7 Zymi 对象要不要跨账号分享。Q8 有没有可以回退过去的 Web 客户端。Q9 各应用商店的 ID。Q10 pill 是不是永远用 matrix.to 的写法。Q11 旧落地页 `dev.unseal.chat/AgentMessenger/to-share/` 还保不保留。Q12 落地页用哪个仓库。
+| D1 | **规范链接放在 URL 路径里，不放在片段（`#/…`）里。** 挂在专用的链接域名上，每条发布线一个，例如 `https://<LINK_HOST>/roomid/<id>`、`/u/<id>`、`/task/<id>`。自定义 scheme 写成 `<scheme>://open/<同一路径>`，只用来从落地页把链接交给 App。 | API 35 以下的 Android 在 App Links 里**匹配不了片段**（片段匹配要到 API 35 的 `uri-relative-filter-group` 才有）。服务端看得到路径，才能用边缘函数返回 404、做预览卡片。聊天消息里只放行 https 链接，自定义 scheme 会被丢掉（`IMChatMac/Message.swift:396-399`）。 |
+| D2 | **语法只有一份，配一份共用的测试向量。** 权威副本是本仓库的 `fixtures/links/vectors.json`。zim 和 zymi-ios 由 **zymi-core** 负责生成和解析链接，做成不依赖登录状态的自由函数。IMKit **不自带语法**，只提供两个注入点：链接生成器和链接打开器。每个 App 只有**一个** `LinkRouter`，所有打开 URL 的地方都先经过它。 | IMKit 和 ZYMIX 都不依赖 zymi-core。“一份向量 + 多份实现”这种做法已有先例：`zymi-services/fixtures/sse-vectors.json` 加 `scripts/sse-parity.sh`。 |
+| D3 | **旧链接都还能用。** 解析器认 `https://matrix.to/#/…`、`https://dev.unseal.chat/AgentMessenger/to-share/#/…`（这两个**旧前缀写成配置里的白名单**，别的 host 上出现同样的片段写法也不认）、`zymix://unseal/…` 和 `matrix:` URI。**@ 提及的 pill 继续用 matrix.to 的片段写法。** 推出顺序是先发解析器，后发生成器。 | 两端判断 pill 的代码都不看域名（`MatrixHTML.swift:119-140`，`MatrixHtml.kt:137-157`）。dev 的 homeserver 关了联邦、注册和访客（`homeserver.yaml.tmpl:34-43`），用 matrix.to 写法没有坏处。 |
+| D4 | **安全基线。** 落地页不做预览，也不请求任何 homeserver。`client` 和 `web-instance[…]` 两个参数一律忽略。落地页只跳到自己拼出来的地址。会改状态的动作一律先在 App 内确认。服务器名检查只用在**用户 ID、别名和 v12 之前的房间 ID** 上；房间和事件是不是自家的，看链接的 host 属于哪条发布线。没有权限和不存在对外显示同一句话。链接里不放任何令牌，v1 只预留 `/invite/` 路径，不实现。 | matrix.to 会按 `via` 去请求任意服务器拉预览（`src/preview/PreviewViewModel.js:46-59`）。ZYMIX 打开链接就直接加入房间（`../matrix.to/src/open/clients/Zymix.js:17-19`）。v12 的房间 ID 和 v3 之后的事件 ID 都没有服务器部分。 |
+| D5 | **各平台做法。** iOS 和 macOS 用 universal links（AASA 按路径匹配）加 scheme；安卓用 App Links（`assetlinks.json` 加 `autoVerify`）加 scheme；Windows 先注册 scheme，用 Electron 的话就是单实例转发；这几条都要等 B1。App 里点到自家链接，**由 `LinkRouter` 拦下来**，不交给系统。 | 现在 IMKit 和 zim 一共有十几个地方会把 https 链接直接交给系统（§5.2）。 |
 
 ---
 
-## 1. 任务前提和仓库实际情况不一致（先读这一节）
+## 1. 任务前提和仓库实际情况不一致
 
-- **`zymi-matrix.to`（远端是 `fixmix-xyz/matrix.to`）和上游完全一样，没有改过。** HEAD 是 `562a5e2`（上游 PR #409），没有任何 zymi、zymix、unseal 字样，也没有部署配置。页面还是 Matrix 的品牌（`index.html:5-13`、`src/RootView.js:36-37`）。
-- **真正在用的落地页逻辑在另一个仓库：`../matrix.to`（远端 `unseal-network/matrix.to`）。** 它的三个提交（`7c118c7`、`9b7ac82`、`4cf008c`）加了 Unseal、ZYMIX、ZYMIX Demo 三个客户端；另外还有 4 个文件改了没提交（`index.html`、`src/create/CreateLinkView.js`、`src/open/clients/Unseal.js`、`src/policy/LoadServerPolicyViewModel.js`）。它的 `build/` 被 gitignore 了，里面有本地构建出来的 AASA，只认 `U633M9A2Z3.www.topsecret.network`。
-- **部署：两个仓库里都没找到部署配置。** `scripts/package.sh` 只是把 `build/` 打成 tar 包。客户端里写死的落地页地址是 `https://dev.unseal.chat/AgentMessenger/to-share/`（`zymix-im-ios/MainApp/Sources/Feature/MatrixDemo/MatrixDemoSettings.swift:102`，以及 `im/Sources/IMMatrix/MatrixShareLinks.swift:8` 的注释），由此推断这个页面部署在 Unseal 的 dev 域名上，但我**没有找到证据**。
-- **`zymix-im-ios`、`../matrix.to`、`zymix-im-android-cloud` 不在 Zymi 的主线里，但现在的分享链接靠它们才能跑通。** 本规格把它们列为“相关但要单独决定”的部分。
+- **`zymi-matrix.to`（远端 `fixmix-xyz/matrix.to`）：** 本规格的第一次提交 `5ccc7c5` 的父提交是 `562a5e2`（上游 PR #409），和上游完全一样。代码里没有任何产品字样，也没有部署配置，页面还是 Matrix 的品牌（`index.html:5-13`、`src/RootView.js:36-37`）。
+- **真正在用的落地页逻辑在 `../matrix.to`（远端 `unseal-network/matrix.to`）。** 它的三个提交（`7c118c7`、`9b7ac82`、`4cf008c`）加了 Unseal、ZYMIX、ZYMIX Demo 三个客户端，另有 4 个文件改了没提交。
+- **旧落地页随 unseal-webapp 一起发布。** `unseal-webapp/scripts/update-to-share.sh:17-18` 会构建 matrix.to，再拷进 `res/to-share/`，这个目录里现在就有 `index.html` 和 `bundle-*.js`。unseal-webapp 里有 `amplify.yml`，推测托管在 AWS Amplify，**待 unseal-webapp 的维护者确认**。客户端里写死的地址是 `https://dev.unseal.chat/AgentMessenger/to-share/`（`zymix-im-ios/MainApp/Sources/Feature/MatrixDemo/MatrixDemoSettings.swift:102`）。
+- **负责人说的“四个平台都有客户端”，在工作区里只能对上 Unseal 品牌的安卓客户端和 Electron（Windows）客户端**（§2.9）。没有 Zymi 品牌的安卓或 Windows 客户端。它们在不在范围内，归 B1 决定。
 
 ---
 
@@ -38,100 +51,97 @@ Q1 链接属于哪个产品、用哪个域名（ZYMI 用 `zymi.app`？ZYMIX 用 
 | 项 | 现状 | 证据 |
 |---|---|---|
 | 链接语法 | 写在片段里：`#/<@user|#alias|!roomid|+group>[/<$event>]?via=…&client=…&web-instance[<id>]=…` | `src/Link.js:20-24, 105-134` |
-| 片段为什么不用路径 | 不让服务端看到链接内容 | `README.md` 的 “URL Scheme” 一节 |
 | `matrix:` URI | 能生成 `matrix:u/…`、`matrix:roomid/…/e/…`、`matrix:r/…`（MSC2312） | `src/Link.js:220-244` |
-| AASA | 构建时根据客户端列表生成，只匹配片段：`{"#":"/*"}` | `scripts/build.js:62, 126-143` |
-| assetlinks.json | **没有** | `scripts/build.js` 里不生成 |
-| 预览 | 用户同意以后，按 `via` 和链接里的服务器去请求 `/.well-known/matrix/client`、`/profile`、`/summary`、`/publicRooms`、缩略图 | `src/preview/HomeServer.js:36-116`，`src/preview/PreviewViewModel.js:46-59` |
+| AASA | 构建时生成，只匹配片段：`{"#":"/*"}` | `scripts/build.js:62, 126-143` |
+| assetlinks.json | **没有** | `scripts/build.js` |
+| 预览 | 用户同意以后，按 `via` 和链接里的服务器请求 `/.well-known/matrix/client`、`/profile`、`/summary`、`/publicRooms` 和缩略图 | `src/preview/HomeServer.js:36-116`，`PreviewViewModel.js:46-59` |
 | `web-instance[]` | Element 和 SchildiChat 只放行白名单里的实例 | `src/open/clients/Element.js:87-88, 112-115` |
 | CSP（本地模拟） | `script-src 'unsafe-inline' 'unsafe-eval'`，`connect-src *` | `scripts/serve-local.js:34` |
-| Unseal 客户端（unseal fork） | 网页实例是 `unseal.network`，scheme 是 `unseal://vector/webapp/AgentMessenger#/…`，App ID 是 `U633M9A2Z3.www.topsecret.network` | `../matrix.to/src/open/clients/Unseal.js:20-29, 50-54` |
-| ZYMIX 客户端（unseal fork） | 链接带 `?client=zymix` 时才选它，深链是 `zymix://unseal/{room|user}/<id>?via=`；事件链接和社群链接**都退化成房间链接**；平台列表里有 Android、Windows、macOS、Linux | `../matrix.to/src/open/clients/Zymix.js:17-21, 38-46, 60-78` |
-| ZYMIX Demo 客户端 | 深链是 `zymixdemo://unseal/`，只有链接点名要它时才显示 | `../matrix.to/src/open/clients/ZymixDemo.js:32-37` |
-| **缺陷** | ZYMIX 在列表里声称支持 Android，可 ZYMIX 安卓版并没有处理 `zymix://unseal/…`（见 §2.5）；`Coor.swift` 的注释写着“安卓支持以后才能列出来” | `Zymix.js:38-46` 对比 `zymix-im-ios/Package/Sources/SiuperModel/Coor.swift:210-216` |
+| Unseal 客户端 | 网页实例是 `unseal.network`，scheme 是 `unseal://vector/webapp/AgentMessenger#/…`，App ID 是 `U633M9A2Z3.www.topsecret.network` | `../matrix.to/src/open/clients/Unseal.js:20-29, 50-54` |
+| ZYMIX 客户端 | 只在链接带 `?client=zymix` 时选它，深链是 `zymix://unseal/{room|user}/<encodeURIComponent(id)>?via=`；事件链接和社群链接退化成房间链接；平台列表里有 Android、Windows、macOS、Linux | `../matrix.to/src/open/clients/Zymix.js:17-21, 38-46, 60-78` |
+| ZYMIX Demo | 深链是 `zymixdemo://unseal/` | `ZymixDemo.js:32-37` |
+| **缺陷** | 平台列表里有 Android，但 ZYMIX 安卓版不处理 `zymix://unseal/…`；Windows、macOS、Linux 上有没有处理也没核实 | `Zymix.js:38-46`，对照 `Coor.swift:210-216` |
 
 ### 2.2 IMKit（`im`，供 iOS 和 macOS 使用）
 
 | 项 | 现状 | 证据 |
 |---|---|---|
-| 房间链接 | 由 SDK 的 `room.matrixToPermalink()` 生成，再经过 `shareLinks?.rewrite` 改写 | `Sources/IMMatrix/MatrixChatClient.swift:1669` |
-| 消息链接 | 由 SDK 的 `matrixToEventPermalink(eventId:)` 生成，经过同样的改写 | `Sources/IMMatrix/MatrixMessageLinks.swift:11-12` |
-| 改写规则 | 只改写 `https://matrix.to/#/` 开头的链接，改成 `<base>#/<原片段>[&client=<id>]`；base 必须是 https，不能带凭据、query 或片段 | `Sources/IMMatrix/MatrixShareLinks.swift:7-37` |
-| 注入点 | `MatrixConfiguration.shareLinks`，为 nil 时用 matrix.to | `Sources/IMMatrix/MatrixConfiguration.swift:21-23` |
-| 发出去的 pill | `https://matrix.to/#/@user`；配了落地页时改写成落地页地址 | `Sources/IMMatrix/MatrixOutgoingHTML.swift:21-31`；编辑器 `Packages/IMChatUI/.../RichTextComposer.swift:229-230` |
-| 收到的 pill | 不管哪个域名，只要片段是 `#/@user:server` 或 `#/user/@…`，或者是 `matrix:u/…` | `Sources/IMMatrix/MatrixHTML.swift:119-140` |
+| 房间链接和消息链接 | SDK 生成 matrix.to 链接，再经 `shareLinks?.rewrite` 改写 | `Sources/IMMatrix/MatrixChatClient.swift:1669`，`MatrixMessageLinks.swift:11-12` |
+| 改写规则 | 只改 `https://matrix.to/#/` 开头的链接，改成 `<base>#/<原片段>[&client=<id>]` | `Sources/IMMatrix/MatrixShareLinks.swift:7-37` |
+| 注入点 | `MatrixConfiguration.shareLinks`，为 nil 时用 matrix.to。**ZYMIX 在用这个注入点**：`zymix-im-ios/SiuperMatrix/Sources/SiuperMatrix/MatrixDemoRuntime.swift:415-416` | `MatrixConfiguration.swift:21-23` |
+| 发出的 pill | 发的是 matrix.to 链接；配了 `shareLinks` 的话改写到落地页（在 `MatrixChatClient.swift:796, 854` 调用） | `MatrixOutgoingHTML.swift:21-31` |
+| 收到的 pill | 不看域名，片段是 `#/@user:server` 或 `#/user/@…`，或者是 `matrix:u/…` 就认 | `MatrixHTML.swift:119-140` |
 | 空间链接 | 服务端没给的话，自己拼一个 matrix.to 链接 | `Packages/IMChatMac/.../SpaceHome.swift:342-344` |
-| 在 App 里点链接（iOS） | 是 pill 就打开那个人；其他 http(s) 链接用 `.systemAction` 交给系统 | `Packages/IMChatUI/.../MessageRowView.swift:439-448`、`HostMessageHooks.swift:61-69` |
-| 在 App 里点链接（Mac） | 只放行 http、https、mailto，**自定义 scheme 一律丢掉** | `Packages/IMChatMac/.../Message.swift:372-374, 396-399` |
-| 收到的深链 | IMKit **没有**处理入口，由宿主负责 | — |
+| 把链接交给系统的地方 | iOS：`MessageRowView.swift:439-448`、`HostMessageHooks.swift:61-69`、`RoomInfoView.swift:869-872`。Mac：`Message.swift:372-374`，以及 `NativeMessageCell.swift:1061-1066` → `NativeDebugMouse.open`（`NativeDebugMouse.swift:28-33`，开了调试开关时只打 `debug-open` 日志，不真的打开） | 同左 |
 
 ### 2.3 macOS：zim
 
 | 项 | 现状 | 证据 |
 |---|---|---|
-| scheme | 只有 `zim`，而且只给分享扩展用：`zim://share?inbox=<id>` | `project.yml:131-134`，`Info.plist:41-52`，`Shared/ShareInbox.swift:4` |
-| 处理入口 | `.onOpenURL` 只处理 ShareInbox 和文件 URL，其他 URL 直接忽略 | `Sources/ZIMApp.swift:191-214` |
-| 窗口路由 | 主窗口 `handlesExternalEvents(matching: ["*"])` | `Sources/ZIMApp.swift:20, 40` |
-| Associated Domains | **没有**（entitlements 里只有 sandbox、网络、推送、keychain、app group） | `ZIM.entitlements` |
-| 分享链接 | 只有 DEBUG 构建下设了 `ZIM_E2E_SHARE_LINKS_BASE` 才改写；正式构建用 matrix.to | `Sources/AccountModel.swift:341-345`，`SPEC-mac-message-share.md:15-16, 84` |
-| Bundle ID 和 Team ID | `ai.pagepeek.zim`，Team `VZZQ2Q6734` | `project.yml:47, 142` |
-| Zymi 对象的路由 | `ZymiRoute`：`.task(String)`、goals、experts、teams、circles、artifacts、music、agentProfile… | `Sources/Zymi/UI/Shell/ZymiNavigator.swift:7-27` |
-| 断言了 matrix.to 的测试 | 改功能时这几处要一起改 | `UITests/SpaceSettingsTests.swift:147`，`UITests/MessageShareTests.swift:177, 181`，`UITests/MentionTests.swift:62` |
+| 构建身份 | Debug 和 Release **共用** Bundle ID `ai.pagepeek.zim` 和 `ZIM.entitlements`；Release 连的也是 dev 网关 | `project.yml:121-124, 142, 144` |
+| scheme | 只有 `zim`，给分享扩展用：`zim://share?inbox=<id>` | `project.yml:131-134`，`Shared/ShareInbox.swift:4` |
+| 处理入口 | `.onOpenURL` 只处理 ShareInbox 和文件，别的 URL 直接丢掉 | `Sources/ZIMApp.swift:191-214` |
+| Associated Domains | 没有 | `ZIM.entitlements` |
+| 分享链接 | 只在 DEBUG 下设了 `ZIM_E2E_SHARE_LINKS_BASE` 时才改写 | `Sources/AccountModel.swift:341-345` |
+| ZymiCore 从哪来 | `../zymi-services-wt/timeline/apple/ZymiCore`，不是 main 分支 | `project.yml:22-26` |
+| Zymi 页签里直接调 `NSWorkspace.shared.open` 的地方 | `Sources/Zymi/Timeline/ZymiTimelineHost.swift:102`；`UI/Task/ZymiLiveDesignCards.swift:280, 398, 482, 498, 499, 660, 687, 727, 729, 758`；`UI/Task/ZymiLiveResultCards.swift:255, 500, 512`；`ZymiArtifactsStore.swift:68` | 同左 |
+| Zymi 对象的路由 | `ZymiRoute.task(String)` 等 | `Sources/Zymi/UI/Shell/ZymiNavigator.swift:7-27` |
+| 断言了 matrix.to 的测试 | `UITests/SpaceSettingsTests.swift:147`，`MessageShareTests.swift:177, 181`，`MentionTests.swift:62` | 同左 |
 
-### 2.4 iOS：zymi-ios（ZYMI）和 zymix-im-ios（ZYMIX，不在主线里）
-
-| 项 | 现状 | 证据 |
-|---|---|---|
-| zymi-ios 的 scheme | 每条发布线一个 `callback_scheme`（本地 dev 是 `zymi-dev`），只用作 OAuth 和钱包回调 | `App/Info.plist:17-25`，`Packages/ZymiKit/Sources/ZymiModel/ZAgentAppCallbacks.swift:4-25`（禁止用 `zymix`、`siuper`），`ZAgentConnectorAuthentication.swift:14` |
-| zymi-ios 的 Associated Domains | 构建脚本支持 `associated_domains`（格式是 `applinks:host`），但本地 dev 配的是 `[]` | `Scripts/environment.py:123-124, 166`，`Configurations/environment.example.json` |
-| zymi-ios 收到的深链 | **App 根上没有 `onOpenURL` 或 `onContinueUserActivity`，也没有 `application(_:open:)` 或 `openURLContexts`**。回调 URL 只经 `ASWebAuthenticationSession` 的完成回调交给 `ZAgentConnectorStore.matches` 和 `ZAgentWalletStore.matches` | 在 `App/`、`Packages/` 里都搜不到这些入口；`ZAgentConnectorAuthentication.swift:14`，`ZAgentConnectorStore.swift:216`，`ZAgentWalletStore.swift:113` |
-| zymi-ios 的聊天分享链接 | `MatrixConfiguration` 没有设 `shareLinks`，所以用 matrix.to | `Packages/ZymiKit/Sources/ZymiChatMatrix/ZymiChatMatrix.swift:135` |
-| zymi-ios 现有的分享 | 专家资料页只分享文字；音乐帖子的 `shareUrl` 是服务端给的 | `ZAgentExpertProfileView.swift:84`，`ZymiModel/Music/MusicDiscoveryModels.swift:161, 301` |
-| ZYMIX 的 universal links | 域名有 `oia.zymix.io`、`oia.zymix.app`、`oia.siuper.app`、`oia-dev.*`；AASA 的 paths 里有 `*`、`/v/*`、`/user/*`、`/group/*`… | `zymix-im-ios/MainApp/Resources/Siuper_*.entitlements:13-20`，`zymix-im-ios/apple-app-site-association` |
-| ZYMIX 每条发布线一个分享域名 | `oia.zymix.io`、`oia-stage`、`oia-test`、`oia-dev` | `Package/Sources/SiuperModel/BackendEnvironment.swift:267-286` |
-| ZYMIX 的短链 | `oia.zymix.io/s/{code}`（旧的）；`/go/{code}` 放在一个刻意**不注册** UL 的域名上 | `Package/Sources/SiuperInterface/ShortUrlInterface.swift:5-14` |
-| ZYMIX 的 Unseal 路由 | `/unseal/room/:roomId`、`/unseal/user/:userId` | `Package/Sources/SiuperModel/Coor.swift:210-216` |
-| ZYMIX 的落地页设置 | 默认是 `dev.unseal.chat/AgentMessenger/to-share/`，`clientID` 是 `zymixdemo` | `MainApp/Sources/Feature/MatrixDemo/MatrixDemoSettings.swift:102`，`MatrixDemoHost.swift:184` |
-
-### 2.5 Android：im-android（IMKit 的 Kotlin 版）和 zymix-im-android-cloud（ZYMIX）
+### 2.4 iOS：zymi-ios（ZYMI）和 zymix-im-ios（ZYMIX，不在 v1 范围内）
 
 | 项 | 现状 | 证据 |
 |---|---|---|
-| im-android 的房间链接 | 直接用 `room.matrixToPermalink()`，**没有改写的注入点** | `im-matrix/src/main/kotlin/network/unseal/im/matrix/MatrixChatClient.kt:1070` |
-| im-android 发出去的 pill | 写死 matrix.to | `im-matrix/.../MatrixOutgoingHtml.kt:51-52` |
-| im-android 收到的 pill | 和 iOS 一样不看域名 | `im-matrix/.../MatrixHtml.kt:137-157` |
-| im-android 的 intent-filter | 没有（它是库，`sample` 和 `demo` 两个模块也没有） | 在 Manifest 里搜不到 |
-| ZYMIX 安卓的 scheme | `zymix`、`siuper` | `app/src/main/AndroidManifest.xml:200-207` |
-| ZYMIX 安卓的 App Links | `oia.zymix.io`、`oia-dev`、`oia-test`、`oia-stage`，带 `autoVerify`；`zymix.go.link` 由 Adjust 托管 | `AndroidManifest.xml:209-229, 250-259` |
-| ZYMIX 安卓的路由 | `DeepLinkRouter`：按路径匹配，规则和 iOS 的 Coordinator 一致 | `zymix-uikit/src/main/java/com/zymix/uikit/navigation/DeepLinkRouter.kt:11-40` |
-| ZYMIX 安卓的 Unseal 路由 | **没有**（搜 `unseal/room`、`matrix.to` 都没结果） | — |
-| minSdk | 26 | `zymix-im-android-cloud/gradle/libs.versions.toml:11`，im-android 的 `*/build.gradle.kts` |
-| **Zymi 安卓客户端** | **不存在**。zymi-core 计划以后生成 Kotlin 绑定 | `zymi-services/README.md:3-4` |
+| scheme | 每条发布线一个 `callback_scheme`（本地 dev 是 `zymi-dev`），只用来接 OAuth 和钱包的回调 | `App/Info.plist:17-25`，`ZAgentAppCallbacks.swift:4-25` |
+| Associated Domains | 构建脚本支持，但正则是 `applinks:[A-Za-z0-9.-]+`，**不接受 `?mode=developer`**；`signing.py` 还会拿它和描述文件逐项比对；本地 dev 配的是 `[]` | `Scripts/environment.py:123-124, 166`，`Scripts/signing.py:29-30` |
+| 收到深链的入口 | **没有**：没有 `onOpenURL`、`onContinueUserActivity`、`application(_:open:)` 或 `openURLContexts`。回调 URL 只从 `ASWebAuthenticationSession` 的完成回调进来 | `ZAgentConnectorAuthentication.swift:14`，`ZAgentConnectorStore.swift:216`，`ZAgentWalletStore.swift:113` |
+| 聊天分享链接 | 没有设 `shareLinks`，用的是 matrix.to | `ZymiChatMatrix.swift:135` |
+| 有没有接 ZymiCore | 当前分支 `feat/zymi-chat-session` 没接；接入工作在 `zymi-ios-zymi-core` 的 `feat/zymi-core-s1` 上（`01ebe8b`，wip） | 两个分支 |
+| ZYMIX 的 UL | 域名是 `oia.zymix.io` 等，AASA 给 3 个 App ID 都声明了 `"*"` | `zymix-im-ios/apple-app-site-association`，`Siuper_*.entitlements:13-20` |
+| ZYMIX 的 Unseal 路由 | `/unseal/room/:roomId`、`/unseal/user/:userId`，打开房间链接就直接加入 | `Coor.swift:210-216` |
+
+### 2.5 Android：im-android 和 zymix-im-android-cloud（都不在 v1 范围内）
+
+| 项 | 现状 | 证据 |
+|---|---|---|
+| im-android 的房间链接 | 直接用 `room.matrixToPermalink()`，没有注入点 | `MatrixChatClient.kt:1070` |
+| im-android 的 pill | 发出的写死 matrix.to；收到的不看域名 | `MatrixOutgoingHtml.kt:51-52`，`MatrixHtml.kt:137-157` |
+| ZYMIX 安卓 | scheme 是 `zymix` 和 `siuper`；`oia-*.zymix.io` 的 App Links（4 条发布线的 host 都在**同一个** Manifest 里）；有 `DeepLinkRouter`，但**没有 Unseal 路由** | `AndroidManifest.xml:200-229`，`DeepLinkRouter.kt:11-40` |
+| Zymi 安卓客户端 | 不存在 | `zymi-services/README.md:3-4` |
 
 ### 2.6 Windows
 
-**在 `/Users/jelf/Projects/work` 下面没有找到 Windows 客户端仓库。** 我搜了 `*.sln`、`*.csproj`、`Package.appxmanifest`、`tauri.conf.json` 和 `electron-builder*`，只找到 element-web、unseal-webapp 和 builder 演示里的 Electron 配置，都和 Zymi 没关系。现有的线索有三条：
-
-- `zymi-services/README.md:3-4` 和 `zim/SPEC-zymi-core-rust.md:9, 90`：Windows 计划用 C#，绑定靠第三方的 `uniffi-bindgen-cs`。
-- `zim/SPEC-zymi-web.md:3, 25`：同一个 wasm 包给浏览器和 Electron 共用；`zymi-services/web/electron/main.cjs` 只是测试用的外壳。
-- ZYMIX iOS 有 `PCScanLoginRouteHandler`（`BridgeWiringSetup.swift:432`），说明另有一个 PC 客户端，但不在这个工作区里。
+- **没有 Zymi 品牌的 Windows 客户端。** 计划是用 C#，绑定靠 `uniffi-bindgen-cs`（`zymi-services/README.md:3-4`，`zim/SPEC-zymi-core-rust.md:9, 90`），或者 Electron 加 zymi-wasm（`zim/SPEC-zymi-web.md:3, 25`）。
+- **有 Unseal 品牌的 Electron 客户端，并且能打 Windows 安装包**，见 §2.9。**它在不在范围内，待负责人定（B1）。**
+- ZYMIX iOS 有 `PCScanLoginRouteHandler`（`BridgeWiringSetup.swift:432`），说明还有一个 ZYMIX 的 PC 客户端，但不在这个工作区里。
 
 ### 2.7 共享内核：zymi-services（zymi-core）
 
 | 项 | 现状 | 证据 |
 |---|---|---|
-| 定位 | 每个平台都用的 Zymi 客户端内核；聊天走 matrix-rust-sdk，其余业务走 zymi-core | `README.md:1-5, 20-27` |
-| 和链接有关的现有代码 | 卡片动作里的 URL 白名单 `http`、`https`、`mailto`、`maps`、`sms`、`tel`；有 `*.share` 一类动作，比如 `artifact.share` | `crates/zymi-core/src/cards/actions.rs:11-12, 22-50, 64-75`，`cards/mod.rs:116`（`Share { url, text }`） |
-| 链接或分享模块 | **没有**。核心里没有 share URL、深链、邀请码的概念 | 搜 `share_url`、`permalink`、`deep_link` 只命中卡片字段 |
-| 绑定 | Swift 用 UniFFI；浏览器和 Electron 用 wasm（`crates/zymi-wasm`，`scripts/check-surface.sh` 保证接口一致） | `docs/web.md` |
-| 网关 | **不在这个仓库里。** 服务端那部分（短链、预览、`.well-known`）在我能读到的仓库里找不到对应的代码 | — |
+| 定位 | 各平台共用的 Zymi 客户端内核 | `README.md:1-5, 20-27` |
+| 和链接有关的代码 | 卡片动作里的 URL 白名单，以及 `artifact.share` 这类动作 | `crates/zymi-core/src/cards/actions.rs:11-12, 22-50`，`cards/mod.rs:116` |
+| 链接模块 | 没有 | — |
+| 导出自由函数的先例 | `browser_code_input` 这类不依赖 Client 的函数 | `crates/zymi-ffi/src/browser.rs:245-256` |
+| 网关和服务端 | 不在这个仓库 | — |
 
 ### 2.8 Matrix 服务端
 
-- `server_name` 是 `zymi.app`，用户 ID 是 `@<account_id(uuid)>:zymi.app`：`zim/SPEC-zymi-matrix-session.md:33, 61, 143`。
-- 不开联邦：`zim/dev/zymi-homeserver/homeserver.yaml.tmpl:34-35`。`zymi.app/.well-known/matrix/client` 还没上线：`SPEC-zymi-matrix-session.md:156`。
-- 模板里**没有设** `require_auth_for_profile_requests` 和 `limit_profile_requests_to_users_who_share_rooms`，**待确认**：如果按 Synapse 的默认值，资料接口不登录也能读。要在生产配置上核实，我只看了本地模板。
-- Matrix 可选模式（`matrix_chat` 开关，T23）：`zim/tasks/todo-core-architecture.md:283`。
+- `server_name` 是 `zymi.app`，用户 ID 是 `@<account_id(uuid)>:zymi.app`（`zim/SPEC-zymi-matrix-session.md:33, 61`）。
+- 本地 E2E 栈：`server_name` 是 `localhost:8448`，带端口；种好的房间是 v12 的 `!owtPMO14G1v6Yl9KlRjjDmlKdVC5NbSUPqbiF2Fru30`，**没有** `:server`（`zim/dev/fake-zymi/state-e2e/e2e.json`）。Synapse 1.162 默认建 v12 房间（`im/dev/matrix/local_matrix.py:47-48`）。**生产环境用哪个房间版本未知**，所以两种写法都要支持。
+- dev 模板关掉了联邦、注册、密码登录和访客（`zim/dev/zymi-homeserver/homeserver.yaml.tmpl:34-43`）。资料接口要不要登录才能读，模板里没有设置；**待在生产配置上确认**。
+- Matrix 可选模式（T23）：`zim/tasks/todo-core-architecture.md:283`。
+
+### 2.9 Unseal 品牌客户端（新增；在不在范围内归 B1 定）
+
+| 项 | 现状 | 证据 |
+|---|---|---|
+| Electron（Windows 和 Mac） | `appId` 是 `com.unseal.webapp`，Windows 打 `nsis` 和 `zip` 两种包；已经打好的有 `dist-electron/Unseal Setup 1.1.26.exe` | `unseal-webapp/packages/electron/package.json` 的 `build` 段 |
+| Electron 的 scheme | `protocols=[{name: "Unseal OIDC Callback", schemes: ["unseal"]}]`，用 `setAsDefaultProtocolClient` 注册。**按名字看，它是 OIDC 回调用的，不是分享链接** | `package.json`，`packages/electron/protocol.js:146-152` |
+| Electron 的单实例转发 | `requestSingleInstanceLock`；`second-instance` 和 `open-url` 两个事件都交给 `dispatchProtocolCallback` | `packages/electron/main.js:243-262` |
+| Android 客户端 | `unseal://open`；`app`、`develop`、`staging.unseal.network` 的 App Links（`autoVerify`）；`mobile.unseal.network` 上的 `/unseal/`、`/element/`；`matrix:` scheme；`unseal://` 和 `element://` 的 `user`、`room` | `unseal-android/app/src/main/AndroidManifest.xml:69-140` |
+| Android 的变体 | Debug 和 Nightly 用 `applicationIdSuffix` 区分 | `unseal-android/app/build.gradle.kts:122, 162` |
+| 有没有 Zymi 的东西 | unseal-webapp 的配置和 unseal-android 的 Manifest 里都搜不到 `zymi` | — |
 
 ---
 
@@ -139,89 +149,121 @@ Q1 链接属于哪个产品、用哪个域名（ZYMI 用 `zymi.app`？ZYMIX 用 
 
 | 候选 | 证据 | 适合不适合 |
 |---|---|---|
-| **`zymi.app`**（及其子域名） | Matrix `server_name`（`SPEC-zymi-matrix-session.md:33`）；网关 `dev.zymi.app`（在 zim、zymi-ios 里出现 177 次）、`matrix-dev.zymi.app`（`zim/project.yml:122`）、`api.zymi.app` 和 `testing.zymi.app`（`zymi-core/tests/requests.rs:113`，`tests/auth.rs:757`） | ZYMI 和 ZIM 最自然的选择。根域名大概率是官网，所以建议用专门的子域名 |
-| `zymix.io` / `zymix.app` / `zymix.ai` | ZYMIX 的 UL 域名 `oia.*.zymix.io`；zymi-ios 的条款和隐私页在 `www.zymix.ai`（`environment.example.json`）；`zymix.io` 是 ZYMIX 官网（`Zymix.js:56`） | 是 ZYMIX 的域名。**如果和 ZYMIX 共用 `oia.zymix.io`，两个 App 会抢同一批链接** |
-| `pagepeek.ai` | Bundle ID 前缀 `ai.pagepeek.*`（`zim/project.yml:142`）；`zymi.pagepeek.ai` 用作邮件转发（`zim/Resources/Localizable.xcstrings:12580`） | 是公司域名，不是面向用户的品牌 |
-| `unseal.network` / `unseal.chat` | 旧 Unseal 客户端（`Unseal.js:21`），旧落地页（`MatrixDemoSettings.swift:102`） | 旧品牌，只做向后兼容 |
-
-**建议**：ZYMI 和 ZIM 的链接放在 `zymi.app` 下面一个专用的子域名上，比如 `to.zymi.app` 或 `link.zymi.app`，每条发布线一个（参照 ZYMIX `oia-{env}` 的做法），例如 `to-dev.zymi.app`、`to-testing.zymi.app`。专用子域名的好处是：AASA、assetlinks、CSP 和官网互不影响，官网改版也不会弄坏链接。**具体用哪个是 Q1、Q2，下文统一写成 `<LINK_HOST>`。**
+| **`zymi.app` 的子域名** | Matrix `server_name`；网关 `dev.zymi.app`；`matrix-dev.zymi.app`（`zim/project.yml:122`）；`api.zymi.app` 和 `testing.zymi.app`（`zymi-core/tests/requests.rs:113`，`tests/auth.rs:757`） | **默认就用它（B2）** |
+| `zymix.io` 等 | ZYMIX 的 UL 域名。ZYMIX 的 AASA 给 3 个 App ID 都声明了 `"*"` | 和 ZYMIX 共用一定会抢链接，所以不用 |
+| `pagepeek.ai` | Bundle ID 前缀，邮件转发域名 | 是公司域名，不是面向用户的品牌 |
+| `unseal.network` / `unseal.chat` | 旧客户端、旧落地页 | 只用来兼容旧链接 |
 
 ---
 
 ## 4. 链接语法
 
-### 4.1 总规则
+### 4.1 生成规则（逐字节确定）
 
-- 规范链接是 `https://<LINK_HOST>/<kind>/<seg>[/<kind2>/<seg2>][?<query>]`。
-- Matrix 实体的路径**照搬 MSC2312 `matrix:` URI 的写法**：`u/`、`r/`、`roomid/`、`e/`，ID 前面不带 sigil（`@`、`#`、`!`、`$`）。这样转成 `matrix:` URI 只是换个前缀，也不用处理 `#` 的转义问题。
-- 每一段都按 RFC 3986 的 pchar 做百分号编码，`/ ? # %` 和空白必须编码。解析器只解码一次，解码后出现 `/`、控制字符，或者长度超过 255 字节（Matrix ID 的上限），就整条拒绝。
-- **规范链接不带 `via`**：我们只有一个服务器，又不开联邦。解析器遇到 `via` 时，只认等于自家 `server_name` 的值，其他的忽略。
-- `client` 和 `web-instance[…]` 不再生成；收到了也忽略。
-- `action=join` 和 `action=chat`（MSC2312 的参数）**只当提示**，不会自动执行（见 §8）。
-- 自定义 scheme 的写法是 `<scheme>://open/<和 https 一样的路径>?<和 https 一样的 query>`。主机名固定是 `open`，为别的用途保留：zim 已经用了 `share`（`zim://share?inbox=`），zymi-ios 已经用了 `connectors` 和 `wallet`。**凡是能用 scheme 打开的东西，用 https 都能打开**，scheme 不提供任何额外能力。
+1. 规范链接是 `https://<本发布线的第一个 host>/<kind>/<id>[/e/<event>]`，**不带 query，也不带片段**。
+2. `kind` 只能是小写的 `u`、`r`、`roomid`、`task`、`goal`、`agent`、`artifact`、`circle`。`invite` 和 `team` 预留，现在不生成。
+3. Matrix ID 去掉 sigil 再放进路径（`@`、`#`、`!`、`$`），写法照搬 MSC2312。
+4. 编码：把 ID 的 UTF-8 字节逐个处理。`A-Z a-z 0-9 - . _ ~ :` 原样保留，其余字节一律写成 `%XX`（十六进制用大写）。所以 `:` **永远不编码**，`+` 写成 `%2B`，`/` 写成 `%2F`，`@` 写成 `%40`。
+   - JS 实现**不能**直接用 `encodeURIComponent`：它会把 `:` 编成 `%3A`，又不会编码 `!'()*`。
+5. Zymi 对象的 ID 必须匹配 `[A-Za-z0-9_-]{1,128}`，保留大小写；不匹配就不生成，报 `invalid_id`。由于不含 `.`，生成的路径段不可能是点段。
+6. 给不是本发布线 `server_name` 的用户、别名或旧房间 ID 生成链接时，报 `foreign_server`。
+7. scheme 写法：`<scheme>://open<和 https 一样的路径>`。scheme 来自发布线配置里按平台列出的那张表（§5.3）。
 
-### 4.2 可以分享的实体
+### 4.2 解析规则（按顺序执行）
 
-| 实体 | 规范 https 链接 | scheme 链接 | 谁来打开、打开后是什么 | 来源 |
-|---|---|---|---|---|
-| 用户（打开资料，可发起私聊） | `/u/<localpart>:<server>`，例如 `/u/0b1f…:zymi.app` | `<scheme>://open/u/…` | 打开资料页；要发私聊得用户再点一次 | `matrix:u/` |
-| 房间或群（按 ID） | `/roomid/<id 去掉 !>`（v12 的房间 ID 没有 `:server`） | `<scheme>://open/roomid/…` | 已经加入的直接打开；没加入的先显示加入页（要确认） | `matrix:roomid/` |
-| 房间（按别名） | `/r/<alias 去掉 #>`，例如 `/r/team:zymi.app` | 同上 | 同上 | `matrix:r/` |
-| 空间 | 和房间一样（空间就是 `m.space` 类型的房间） | 同上 | 打开空间主页 | README 里关于 Spaces 的说明 |
-| 消息或事件（线程里的消息也一样） | `/roomid/<id>/e/<event 去掉 $>` | 同上 | 打开房间，跳到这条消息（`SPEC-mac-jump-to-message.md`）；消息在线程里就打开线程 | `matrix:…/e/` |
-| 房间邀请 | 就是房间链接。**能不能进由服务端的 join rule 决定**，链接本身不是凭证 | — | 加入页 | — |
-| 账号邀请或推荐码 | **先保留** `/invite/<code>`；码由服务端生成，一次性 | `<scheme>://open/invite/<code>` | 要有后端（Q7） | 参照 ZYMIX 的 `oia.zymix.app/invite?code=`（`InviteLinkHandler.swift:32`） |
-| Zymi 任务 | `/task/<task_id>` | `<scheme>://open/task/…` | 打开任务页（zim 的 `ZymiRoute.task`） | `ZymiNavigator.swift:19` |
-| Zymi 目标 | `/goal/<goal_id>` | 同上 | 打开目标 | `ZymiNavigator.swift:12, 20`；`zymi-core/src/goals` |
-| Zymi 专家或智能体 | `/agent/<expert_id>` | 同上 | 打开智能体资料页 | `ZymiNavigator.swift:23-24`；`fixtures` 里的 `expert_id` 是 UUID 或 slug |
-| Zymi 产物 | `/artifact/<artifact_id>` | 同上 | 打开产物 | `zymi-core/src/artifacts.rs`；卡片动作 `artifact.share`（`actions.rs:12`） |
-| Zymi 圈子 | `/circle/<circle_id>` | 同上 | 打开圈子 | `zymi-core/src/circles` |
-| Zymi 团队 | **先保留** `/team/<id>`。现在 `ZymiRoute.teams` 不带 ID，所以先不做 | — | — | `ZymiNavigator.swift:10` |
-| 音乐帖子等由服务端生成的链接 | **不归这套语法管**：服务端给什么就分享什么（`MusicDiscoveryModels.swift:161`） | — | — | — |
+1. **用 WHATWG URL 规范解析整串输入。** 语法定义在**规范化之后**的结果上：点段已经折叠，https 里的 `\` 已经变成 `/`，host 已经转成小写，默认端口已经去掉。Rust 的 `url` crate 和浏览器的 `URL` 都符合这个规范；Foundation 的 `URLComponents` 和 Android 的 `Uri` **不符合**，平台代码**不能自己解析**，必须交给 zymi-core。
+2. 按 scheme 和 host 分流：
+   - `https` 加本发布线的 host（端口必须是默认端口，不能带用户名或密码，否则判为 `malformed`）→ 按规范路径解析。路径恰好是 `/` 的，那是网站首页 → `not_ours`。
+   - `https` 加别的发布线的 host → `other_lane`，并带上那条发布线的名字。
+   - `https`，并且去掉 query 和片段以后**整串等于**某个旧前缀（配置项 `legacy.fragment_bases`）→ 按旧片段解析；没有 `#/` 的话 → `not_ours`。
+   - 本构建注册的 scheme 加 host `open`（大小写不敏感）→ 按规范路径解析；host 是别的（`share`、`connectors`、`wallet`）→ `not_ours`，交回原来的处理逻辑。
+   - `matrix:` → 按 MSC2312 解析。
+   - 旧 scheme（配置项 `legacy.schemes`：`zymix`、`zymixdemo` 的 host 都是 `unseal`）→ 按旧 ZYMIX 写法解析。
+   - 其他任何情况 → `not_ours`。
+3. 路径：允许结尾有**一个**斜杠；**先按字面上的 `/` 切段**，出现空段就判 `malformed`（这样 `//evil` 永远不会变成协议相对地址）。
+4. 第一段是 kind，大小写敏感、精确匹配。预留的 kind → `reserved`；不认识的 → `unknown_kind`。
+5. 其余每段**只解码一次**。`%` 后面不是两位十六进制、解码结果不是合法的 UTF-8、或者含控制字符，都判 `malformed`。解码之后的 `/` 是 ID 的一部分（Matrix 的别名允许含 `/`；v3 房间的事件 ID 用的是标准 base64）。
+6. 段数：`u` 后面正好 1 段；`r` 和 `roomid` 后面是 1 段，或者 3 段且中间那段是 `e`；Zymi 对象正好 1 段。不对就判 `malformed`。
+7. 按类型校验：
+   - 用户 ID 和别名在**第一个** `:` 处切开：前面是 localpart（不能为空，Matrix 不允许 localpart 里有 `:`），后面是 server name（形如 `hostname`、`IPv4` 或 `[IPv6]`，可以带 `:port`）。
+   - 房间 ID 里有 `:` 的，按旧写法 `<opaque>:<server>` 处理；没有 `:` 的必须是 v12 写法 `[A-Za-z0-9_-]+`。
+   - 事件 ID 不能为空、不能有空白、不超过 254 字节，**不检查服务器**。
+   - Zymi 对象 ID 必须匹配 `[A-Za-z0-9_-]{1,128}`。
+   - 用户 ID 不超过 255 字节。
+8. 服务器名检查（§8.2）：用户 ID、别名、旧房间 ID 的 server 部分，按 ASCII 不区分大小写的方式和本发布线的 `server_name` 比较，连端口一起比；不相等就判 `foreign_server`。
+9. 规范链接的 query 和片段全部忽略，包括 `via`、`action`、`client`、`web-instance[]`。旧写法里的 query 也一样。
 
-**Zymi 对象的链接只用来导航**：链接里只有 ID，只有对象所属的账号能打开。现在内核和网关都没有“分享给别的账号”的概念（§2.7），跨账号分享（比如公开一个产物）需要后端提供分享令牌，**放到 Q7，v1 不做**。
+旧片段写法：片段必须以 `#/` 开头；去掉 `?` 后面的部分，剩下的按 `/` 最多切成 2 段（标识符，可选再跟一个 `$事件`），出现空段就判 `malformed`；每段解码一次，再看 sigil：`@` 是用户，`#` 是别名，`!` 是房间，`+` 是社群 → `unknown_kind`。
 
-### 4.3 解析结果（所有实现对外给出同一个值）
+旧 ZYMIX 写法：`/room/<带 sigil 的 ID>` 或 `/user/<@ID>`，ID 解码一次；没有 sigil 就判 `malformed`。
 
-```
-Link =
-  | User   { user_id }
-  | Room   { room: RoomId | Alias, event_id?: EventId }
-  | Invite { code }                         // 先保留
-  | Zymi   { kind: task|goal|agent|artifact|circle, id }
-  | Legacy(Link)                            // 是从旧写法转来的，用于统计和提示，行为和新写法一样
-```
+### 4.3 解析结果
 
-解析器能识别的输入：`https://<任何一条发布线的 LINK_HOST>/…`、`<scheme>://open/…`、`https://matrix.to/#/…`、`https://<旧落地页>/#/…`（任何 host，只要片段是 matrix.to 的写法），以及 `matrix:…`、`zymix://unseal/{room|user}/…`。**判断某个 host 是不是自家的，只看本条发布线的配置**，不看链接里写了什么。
+| 结果 | 含义 | App 的处理 |
+|---|---|---|
+| `{link, source}` | 是我们的链接，并且合法 | 路由过去（§5、§8） |
+| `{reject: malformed / unknown_kind / reserved / foreign_server}` | 是我们的链接，但不合法 | 提示“链接无效”；如果是 `unknown_kind` 或 `reserved`，改为提示“请更新 App”；**不交给系统** |
+| `{other_lane: <名字>}` | 是我们另一条发布线的链接 | 提示“这是 <名字> 环境的链接”，不打开 |
+| `{not_ours: true}` | 不是我们的链接 | 按原来的规则处理，比如交给系统浏览器 |
 
-### 4.4 各写法的对照（一部分会写进测试向量）
+`link` 的几种形状：`{kind: user, user_id}`、`{kind: room, room_id | room_alias, event_id?}`、`{kind: task | goal | agent | artifact | circle, id}`。`source` 取值有 `canonical`、`scheme`、`matrix_to`、`matrix_uri`、`zymix` 五种，用于统计和排查。
 
-| 输入 | 解析结果 |
-|---|---|
-| `https://<LINK_HOST>/roomid/abc:zymi.app/e/xyz` | `Room{!abc:zymi.app, $xyz}` |
-| `https://matrix.to/#/!abc:zymi.app/$xyz?via=zymi.app` | 同上，标记为 `Legacy` |
-| `https://dev.unseal.chat/AgentMessenger/to-share/#/!abc:zymi.app?via=zymi.app&client=zymixdemo` | `Room{!abc:zymi.app}`，标记为 `Legacy`（`client` 被忽略） |
-| `zymix://unseal/room/%21abc%3Azymi.app?via=zymi.app` | `Room{!abc:zymi.app}`，标记为 `Legacy` |
-| `matrix:u/0b1f:zymi.app?action=chat` | `User{@0b1f:zymi.app}` |
-| `https://<LINK_HOST>/u/x:evil.example` | **拒绝**：服务器不是自家的（联邦关闭时） |
-| `https://<LINK_HOST>/task/..%2F..` | **拒绝**：解码后含 `/` |
+### 4.4 实体一览
+
+| 实体 | 规范链接 | 打开时 |
+|---|---|---|
+| 用户 | `/u/<localpart>:<server>` | 打开资料页；要发私聊得用户再点一次 |
+| 房间、群、空间 | `/roomid/<opaque>[:<server>]`、`/r/<alias>` | 已经加入的直接打开；没加入的先确认（§8.2） |
+| 消息（包括线程里的） | `/roomid/<…>/e/<event>` | 跳到这条消息，在线程里的就打开线程 |
+| 任务、目标、智能体、产物、圈子 | `/task/<id>` 等 | 只有对象所属的账号能打开（§8.4） |
+| 邀请码、团队 | `/invite/…`、`/team/…` **只预留** | 解析为 `reserved` |
+| 服务端生成的分享链接（比如音乐帖子） | 不归这套语法管 | — |
+
+### 4.5 测试向量 `fixtures/links/vectors.json`（L1）
+
+- 共 70 条：生成 13 条，解析 57 条。解析的 57 条里，规范写法和 scheme 写法 17 条，应当拒绝或判为“不是我们的”23 条，旧写法 12 条，旧写法里应当拒绝的 5 条。每条都附一句说明。
+- 用了两条**测试用的**发布线配置（`prod`、`dev`），不代表真实部署。prod 的 scheme 等 B3 定了再补，所以现在没有 handoff 向量。
+- 覆盖到的情况：
+  - v12 和旧写法两种房间 ID；带端口的 server name；标准 base64 的事件 ID；UTF-8 别名；含 `/` 的别名。
+  - 编码过的 `:`；点段和 `%2e%2e`；反斜杠；空段；大写的 kind；结尾斜杠；host 的大小写和默认端口。
+  - 跨发布线的链接；凭据；`http`；`share` 和 `connectors` 这两个 host；`#//evil.example/`；陌生 host 上的旧片段；`web-instance` 和 `client` 两个参数。
+- 每个实现的测试都要做两件事：跑完全部向量；把每条生成出来的 url 和 handoff 再解析一遍，结果必须和原来的 link 相同（来回）。
+- 写本稿时，我在 scratchpad 里用 node 的 WHATWG `URL` 写了一份参考实现，70 条全部通过。我故意改错其中两条，检查确实失败了。这份参考实现**不提交**，只用来证明向量本身前后一致。
+- **改向量要先改这一份，再同步到 zymi-services**（C1）。
 
 ---
 
-## 5. 链接在哪里生成、在哪里解析（单一来源）
+## 5. 单一来源、路由与配置
 
-**结论：语法写在本规格里，再配一份机器能读的向量文件 `zymi-services/fixtures/links/vectors.json`，里面是输入、期望的解析结果，以及期望各平台生成的链接。实现分三处，都要跑这份向量。**
+### 5.1 谁来实现
 
-1. **zymi-core 新增 `links` 模块（Rust）**：`parse(url, lane) -> Option<Link>`，`build(link, lane) -> Url`，`handoff(link, lane) -> Url`（生成 scheme 链接）。通过 UniFFI 暴露给 Swift（以后也给 Kotlin 和 C#），通过 zymi-wasm 暴露给 Web 和 Electron。zim、zymi-ios，以及以后的 Zymi 安卓和 Windows 客户端，**只通过它**生成和解析链接。
-   - 赞成放在 zymi-core 的理由：zymi-core 本来就是“每个平台都用、只有一份”的内核（`README.md:1-5`），有 UniFFI、wasm，还有接口一致性检查（`check-surface.sh`）；Zymi 对象的 ID 和路由也都在内核这一侧。
-   - 反对全部放进 zymi-core 的理由：IMKit（im 和 im-android）以及 ZYMIX 宿主都**不依赖** zymi-core。为了生成一条链接让 IMKit 依赖整个内核，会把 IMKit 和 Zymi 绑死。
-2. **IMKit 不自带语法，只提供注入点**：
-   - 把 `MatrixConfiguration.shareLinks`（现在的 `MatrixShareLinks`，只会改写片段）换成一个协议，例如 `ChatLinkBuilder`，提供 `room(id, via) / event(room, event) / user(id) -> URL`。默认实现继续生成 matrix.to 链接，这样现有的使用方不受影响。Zymi 宿主注入 zymi-core 的实现。im-android 也加同样的注入点（现在没有，`MatrixChatClient.kt:1070`）。
-   - 新增宿主钩子 `openLink(URL) -> Bool`：在 App 里点到链接时**先问宿主**，宿主说已经处理了就停下，否则再按原来的规则交给系统（改三处：`MessageRowView.swift:439`、`HostMessageHooks.swift:61`、`IMChatMac/Message.swift:372`，im-android 的对应位置也改）。
-3. **落地页用 JS 自己实现**，同样跑这份向量。不用 zymi-wasm：wasm 体积大，而页面只需要解析。
-4. **ZYMIX（iOS 和 Android）**：要不要接这套语法取决于 Q1 和 Q4。接的话就自己实现，跑同一份向量。（只核实过 ZYMIX 安卓仓库里没有 zymi-core；zymix-im-ios 没有逐项核实，只知道它通过 SiuperMatrix 用 IMKit。）
+1. **zymi-core 新增 `links` 模块。** 对外是不依赖 Client 或 Session 的自由函数：`link_parse(url, lane_config)`、`link_build(link, lane_config)`、`link_handoff(link, lane_config, platform)`，登录前也能调用。通过 zymi-ffi 导出给 Swift，以后也导出给 Kotlin 和 C#；通过 zymi-wasm 导出给 Web 和 Electron。
+   - 分支：在 zymi-services 从 main 开 `feat/links` 分支。zim 现在指向 `zymi-services-wt/timeline`，所以 links 要么等 timeline 合进 main、zim 改回指向 main，要么同时合进 timeline 分支。由协调者决定，不阻塞 C1。
+2. **IMKit 新增两个注入点：** `ChatLinkBuilder` 负责生成链接，`ChatLinkOpener` 负责打开链接；`MatrixShareLinks` 保留，变成 `ChatLinkBuilder` 的一个内置实现。IMKit 里所有“交给系统打开”的地方都先调 `ChatLinkOpener`，宿主没处理的再按原规则交给系统。**IMKit 不认识这套语法**（原来的 I3 已删除，见 §12）。
+3. **落地页用 JS 自己实现**，运行在边缘函数和浏览器两端，跑同一份向量。
 
-**scheme 不是一条发布线只有一个**：zim 每个构建都注册 `zim`（`project.yml:131-134`）；zymi-ios 每条发布线一个 `callback_scheme`，生产环境的值我没看到；安卓和 Windows 现在都还没有。所以发布线配置里要有一张表，按“平台 × 发布线”给出 scheme，例如 `{ios: <callback_scheme>, macos: zim, android: <待定>, windows: <待定>}`。`handoff(link, lane, platform)` 按这张表生成链接，测试向量也要带上平台这一维。落地页按 UA 判断平台时，iPad 上的 Safari 默认用桌面 UA，和 Mac 分不出来。所以在分不清的时候，页面要把 iOS 和 macOS 两个按钮都显示出来，不能靠猜。
+### 5.2 每个 App 只有一个 `LinkRouter`
+
+- `LinkRouter.open(url)` 的流程：调 `link_parse`，然后路由到聊天、Zymi 页面或提示；结果是 `not_ours` 才交给系统。
+- 系统送来的 URL 和用户在 App 内点到的 URL 都只走这一个入口：
+  - 系统送来的：`.onOpenURL` 和 `onContinueUserActivity`；
+  - App 内点到的：IMKit 的 `ChatLinkOpener`，以及 App 自己所有打开 http(s) 的地方。
+- zim 里要改的调用点就是 §2.3 列出的 15 处，以及 IMChatMac 的两处（`Message.swift:372`，以及经 `NativeMessageCell.swift:1061-1066` 走到的 `NativeDebugMouse.open`）。zymi-ios 的调用点在 S3 里盘点。
+- 加一条检查：`rg 'NSWorkspace\.shared\.open\(|UIApplication\.shared\.open\(|openURL\('`，命中的地方只允许出现在 `LinkRouter` 和打开本地文件的代码里。
+- 调试开关打开时，`LinkRouter` 打日志 `link-route <kind>` 或 `link-system <url>`，E2E 用这些日志判定结果（沿用 `NativeDebugMouse` 打 `debug-open` 日志的做法）。
+
+### 5.3 发布线配置
+
+```
+lane = {
+  name, hosts: [...], server_name,
+  schemes: { ios?, macos?, android?, windows? },   // 生成 handoff 用；解析时只认本构建注册的 scheme
+  legacy: { fragment_bases: [...], schemes: { zymix: "unseal", zymixdemo: "unseal" } },
+  other_lanes: { name: [hosts] }
+}
+```
+
+- iPad 上的 Safari 默认用桌面 UA，和 Mac 分不出来。落地页分不清平台时，同时显示 iOS 和 macOS 两个按钮。
 
 ---
 
@@ -229,76 +271,55 @@ Link =
 
 ### 6.1 iOS（zymi-ios）
 
-- **Universal links**：在每条发布线的环境配置（`Configurations/Local/<env>.json`）里写 `associated_domains: ["applinks:<LINK_HOST>"]`。构建脚本已经能把它写进 entitlements（`Scripts/environment.py:123-124, 166`），`Scripts/signing.py:30` 会检查。开发构建可以用 `applinks:<host>?mode=developer` 绕过 Apple 的 CDN 缓存。
-- **AASA**（放在 `https://<LINK_HOST>/.well-known/apple-app-site-association`，`application/json`，200，不能重定向）：
+- **前提：zymi-ios 先接入 ZymiCore（S0）。**
+- **Universal links：** 在每条发布线的环境配置里写 `associated_domains`。S1 里同时**放宽** `environment.py:123` 的正则，允许 `?mode=developer` 后缀，并相应调整 `signing.py:29-30` 的比对。
+- **AASA**（`application/json`，返回 200，不能重定向；预留的路径一次写全，因为 Apple 的 CDN 会缓存）：
 
 ```json
-{"applinks":{"details":[{"appIDs":["<TEAM>.<bundle_id>"],"components":[
-  {"/":"/u/*"},{"/":"/r/*"},{"/":"/roomid/*"},{"/":"/invite/*"},
-  {"/":"/task/*"},{"/":"/goal/*"},{"/":"/agent/*"},{"/":"/artifact/*"},{"/":"/circle/*"},
-  {"/":"/*","exclude":true,"comment":"其余路径（首页、静态资源）留给网页"}]}]}}
+{"applinks":{"details":[{"appIDs":["<B3>"],"components":[
+  {"/":"/u/*"},{"/":"/r/*"},{"/":"/roomid/*"},{"/":"/task/*"},{"/":"/goal/*"},
+  {"/":"/agent/*"},{"/":"/artifact/*"},{"/":"/circle/*"},{"/":"/invite/*"},{"/":"/team/*"}]}]}}
 ```
 
-- **scheme**：沿用每条发布线已有的 `callback_scheme`（已经保证各线互不相同，`environment.py:146` 和 `173`），加一个主机名 `open`。**不新注册 scheme**（这是 iOS 那一格在 scheme 表里的值，生产环境的值见 Q3）。`ZAgentAppCallbacks.matches` 只认 `connectors` 和 `wallet`，不受影响。
-- **入口**：App 根上加 `.onOpenURL`（处理 scheme）和 `.onContinueUserActivity(NSUserActivityTypeBrowsingWeb)`（处理 UL），然后交给 `zymi-core.links.parse`，再交给路由：聊天实体交给 IMKit，Zymi 实体交给 ZymiKit。链接是在登录前收到的，就先存起来，登录后再打开（ZYMIX 有同样的做法：`MainTabViewController.swift:812`，`Keys.swift:604`）。
-- **生成**：`ZymiChatMatrix.swift:135` 注入 `ChatLinkBuilder`。
+- **scheme：** 用本发布线的 `callback_scheme`，host 是 `open`。**根上的 `.onOpenURL` 只认 host `open`**。外面送进来的 `<scheme>://connectors` 和 `<scheme>://wallet` 一律什么都不做，绝不能当成 OAuth 完成回调；OAuth 回调仍然只从 `ASWebAuthenticationSession` 进来。
+- **入口：** `.onOpenURL` 和 `.onContinueUserActivity(NSUserActivityTypeBrowsingWeb)` 都交给 `LinkRouter`。登录前收到的链接先存起来，登录后再打开。
 
 ### 6.2 macOS（zim）
 
-- **Universal links**：在 `ZIM.entitlements` 里加 `com.apple.developer.associated-domains`，值是 `applinks:<LINK_HOST>`；AASA 的 `appIDs` 里加上 `VZZQ2Q6734.ai.pagepeek.zim`（生产环境的 Team ID 待定，见 Q3）。注意（**待在签名构建上确认**）：macOS 上一般只有 Safari 会走 universal links，Chrome 和 Firefox 只会打开网页。所以落地页上必须有一个“在 ZIM 中打开”的按钮，用的是 scheme 链接。
-- **scheme**：`zim` 已经注册（`project.yml:131-134`）。加主机名 `open`，`share` 保持原样。
-- **入口**：在 `ZIMApp.swift:191` 的 `.onOpenURL` 里，在 ShareInbox 分支之后加 `open` 分支，再加 `.onContinueUserActivity(NSUserActivityTypeBrowsingWeb)`。路由到 IMChatMac（打开房间、事件或用户）或 `ZymiRoute`。`handlesExternalEvents(matching: ["*"])`（`ZIMApp.swift:40`）已经能把事件送到主窗口。
-- **生成**：`AccountModel.swift:341-345` 现在只在 DEBUG 下设 `shareLinks`，改成**每个构建都**按发布线注入 `ChatLinkBuilder`。DEBUG 下的 `ZIM_E2E_SHARE_LINKS_BASE` 留着给测试用。
+- **发布线（B4）：** 现在只有 dev。Debug 另外注册 `zim-debug`，`zim` 保留给分享扩展和 Release，行为不变。以后如果出正式版，要单独的 Bundle ID 和 scheme（另提）。
+- **Universal links：** entitlements 里加 `applinks:<host>`（host 来自 B2，appID 来自 B3）。**待在签名构建上确认（Z4）**：macOS 上一般只有 Safari 会走 universal links，所以落地页一定要有“在 ZIM 中打开”按钮；能不能用 Developer ID 分发，取决于描述文件，并入 B3 一起问。
+- **入口：** 在 `ZIMApp.swift:191` 里、ShareInbox 分支之后，加 host `open` 的分支，再加 `.onContinueUserActivity`，都交给 `LinkRouter`。
+- **生成：** 每个构建都按发布线注入 `ChatLinkBuilder`；Debug 可以用环境变量 `ZIM_E2E_SHARE_LINKS=matrixto` 关掉注入，给 E2E 当对照组用。
 
-### 6.3 Android
+### 6.3 Android（B1 挂起，以下是将来的做法）
 
-- **现在没有 Zymi 安卓 App**（§2.5）。下面写的是 Zymi 安卓 App 将来要怎么接；ZYMIX 安卓要不要接看 Q1 和Q4。
-- **App Links**（在 Manifest 的入口 Activity 上；参照 ZYMIX 的 `DeepLinkEntryActivity`，只透传白名单里的字段）：
+- 每条发布线一个 `applicationId`（参照 unseal-android 的 `applicationIdSuffix`）；host 用 `manifestPlaceholders` 填。**不要**像 ZYMIX 那样把所有发布线的 host 都塞进同一个包。
+- 用 `autoVerify` 的 App Links，按 `pathPrefix` 列出 §6.1 那些路径；另加 `<scheme>://open` 的 intent-filter。
+- `assetlinks.json` 里同时列出 Play 应用签名证书和内部构建证书的 SHA-256。
+- 平台代码不用 `Uri` 自己解析，全部交给 zymi-core（§4.2 第 1 条）。
 
-```xml
-<intent-filter android:autoVerify="true">
-  <action android:name="android.intent.action.VIEW"/>
-  <category android:name="android.intent.category.DEFAULT"/>
-  <category android:name="android.intent.category.BROWSABLE"/>
-  <data android:scheme="https" android:host="<LINK_HOST>"/>
-  <data android:pathPrefix="/u/"/><data android:pathPrefix="/r/"/><data android:pathPrefix="/roomid/"/>
-  <data android:pathPrefix="/invite/"/><data android:pathPrefix="/task/"/><data android:pathPrefix="/goal/"/>
-  <data android:pathPrefix="/agent/"/><data android:pathPrefix="/artifact/"/><data android:pathPrefix="/circle/"/>
-</intent-filter>
-<intent-filter>   <!-- 落地页交给 App 时用的 scheme -->
-  <action android:name="android.intent.action.VIEW"/>
-  <category android:name="android.intent.category.DEFAULT"/>
-  <category android:name="android.intent.category.BROWSABLE"/>
-  <data android:scheme="<lane scheme>" android:host="open"/>
-</intent-filter>
-```
+### 6.4 Windows（B1 挂起）
 
-- **assetlinks.json**（放在 `https://<LINK_HOST>/.well-known/assetlinks.json`）：`delegate_permission/common.handle_all_urls`，包名，加上 **Play 应用签名证书**的 SHA-256，不是本地 upload key 的（ZYMIX 在 `AndroidManifest.xml:209-212` 的注释里踩过这个坑）。
-- **为什么不用片段**：minSdk 是 26，App Links 匹配不了片段，旧的 `#/…` 链接只能先到落地页，再由落地页交给 App（§7）。
-- **im-android**：加 `ChatLinkBuilder` 注入点（`MatrixChatClient.kt:1070`）和 `openLink` 宿主钩子。发出去的 pill 维持 matrix.to 的写法（`MatrixOutgoingHtml.kt:52`，D3）。
+- **如果用 Unseal Electron 做基础：** 单实例锁和 `second-instance` / `open-url` 的转发已经有了（`main.js:243-262`）。还要做三件事：注册分享链接用的 scheme（现在注册的 `unseal` 是给 OIDC 回调用的）；在 `dispatchProtocolCallback` 之前按 host 分流；交给 zymi-wasm 的 `link_parse`。
+- **如果用原生 C#：** 注册表或 MSIX 的 `windows.protocol`；打包成 MSIX 的话，再加 `uap3:AppUriHandler` 和 `/.well-known/windows-app-web-link`。
+- 主要靠落地页上的“在 App 中打开”按钮。**现在给不出 E2E。**
 
-### 6.4 Windows（要等 Q5）
+### 6.5 落地页（B5：边缘函数托管）
 
-- **注册 scheme**：
-  - 不打包的应用：在 `HKCU\Software\Classes\<scheme>` 下写 `URL Protocol` 和 `shell\open\command`。
-  - MSIX：在 manifest 里加 `uap:Extension Category="windows.protocol"`。
-  - Electron：`app.setAsDefaultProtocolClient(scheme)`，再用 `requestSingleInstanceLock()` 和 `second-instance` 事件从 argv 里取到 URL。
-- **https 链接直接打开 App**：只有打包成 MSIX 才能用 `uap3:AppUriHandler`，还要在 `https://<LINK_HOST>/.well-known/windows-app-web-link` 放一个 JSON；浏览器那边支持得也不全。所以在 Windows 上，**落地页加“在 App 中打开”按钮是主要路径**。
-- 收到链接后照样交给 `zymi-core.links.parse`：C# 通过 `uniffi-bindgen-cs`，Electron 通过 zymi-wasm。
-- **这一节现在没法给出能跑的 E2E**，等 Q5 定了再补。
-
-### 6.5 网页回退（落地页）
-
-- **每个规范路径都由落地页接住**：App 没装、系统没把链接交给 App，或者在桌面浏览器上打开时，都会落到这里。
-- 页面内容按顺序是：
-  1. 品牌标题，加一句“这是一个 ZYMI 的 <实体类型> 链接”。**不显示实体详情**（§8.3）。
-  2. 主按钮“在 App 中打开”，指向 `handoff(link, lane, platform)` 生成的 scheme 链接（scheme 表见 §5 末尾）。分不清平台时，同时显示几个平台的按钮。
-  3. 按 UA 显示的下载入口：App Store、Mac App Store、Play、Windows 下载页，具体 ID 见 Q9。
-  4. 如果有 Web 客户端，再加“在网页中继续”（Q8）。
-- 落地页接到旧的片段链接（`/#/…`）时，在浏览器里解析，用 `location.replace` 换成规范路径，再走上面的流程。解析失败就显示“链接无效”，**不跳转**。
-- `.well-known/` 下面放 `apple-app-site-association`、`assetlinks.json`，以后可能还有 `windows-app-web-link`。都由每条发布线的配置生成，Content-Type 是 `application/json`，不能重定向。
-- 响应头：严格的 CSP（`script-src 'self'`，没有 `unsafe-inline` 和 `unsafe-eval`，`connect-src 'none'`，`frame-ancestors 'none'`）、HSTS、`Referrer-Policy: no-referrer`。
-- 预览卡片（OG）：只用统一的品牌图和文字，不按实体生成。按实体生成要后端来做，而且要过 §8.3 的规则。
+- **边缘函数：**
+  - 凡是规范路径前缀下的请求，都由函数用同一个 JS 解析器判断：合法的返回 200 加页面；`reject` 的返回 **404** 加同一个页面（显示“链接无效”状态）；`other_lane` 的返回 200 加提示。
+  - `/.well-known/*` 由配置生成，Content-Type 是 `application/json`，返回 200，不能重定向。
+  - 其余路径一律回退到首页（SPA 回退）。
+  - **托管必须把原始路径交给函数，不能先解码**，这样 `%2F` 才能保留下来（P3 有专门的检查）。
+- **浏览器里：** 旧链接的片段不会发到服务端，只能由页面脚本解析，再用 `location.replace` 换到规范链接；只能用解析结果重新拼地址（向量 `lx-protocol-relative` 证明了这一点）。
+- **页面内容：**
+  - 品牌标题，加一句“这是一个 ZYMI 的 <类型> 链接”，不显示任何实体详情（§8.3）。
+  - “在 App 中打开”按钮。
+  - 按平台显示下载入口，商店 ID 见 Q9。
+  - 一句提示：“如果 App 没反应，请更新到最新版本”。老版本 App 虽然注册了 scheme，却不会处理这类链接。
+  - Smart App Banner（`apple-itunes-app` 加 `app-argument`），需要 B3 提供 App ID。
+- **响应头：** CSP 设为 `script-src 'self'`，`connect-src 'none'`，`frame-ancestors 'none'`；加 HSTS 和 `Referrer-Policy: no-referrer`。
+- **待在真机上确认（U4、U5）：** 同一个域名内的跳转和 `location.replace` 不会触发 UL；微信等内置浏览器会拦截 scheme。如果确认属实，要加“在浏览器中打开”的引导。
 
 ---
 
@@ -306,18 +327,17 @@ Link =
 
 | 旧链接 | 在 App 里点到 | 系统级打开 | 在浏览器里打开 |
 |---|---|---|---|
-| `https://matrix.to/#/…` | 解析器认，直接在 App 里打开 | matrix.to 是 matrix-org 的域名，我们没法声明归属 | 还是由 matrix.org 的页面处理，我们管不了。上游的客户端列表里没有 ZYMI；新消息里的 pill 也还是这个写法，但 pill 在 App 内点击，见 D3 |
-| `https://dev.unseal.chat/AgentMessenger/to-share/#/…?client=…` | 解析器认 | 现在 AASA 只认 `U633M9A2Z3.www.topsecret.network`，以后也不会加 | **Q11**：如果这个页面继续留着，给它加一小段脚本，把片段转成 `https://<LINK_HOST>/…` 再跳过去；如果撤掉，这些链接就失效了 |
-| `zymix://unseal/{room|user}/…` | ZYMIX 继续处理；Zymi 客户端的解析器也认 | — | — |
-| `matrix:` URI | 解析器认 | 不注册 `matrix` scheme：Element 等别的客户端也会抢 | — |
-| 消息里已经发出去的 pill | 两端判断 pill 的代码不看域名（§2.2、§2.5），继续能用 | — | — |
+| `https://matrix.to/#/…` | `LinkRouter` 认 | 我们没法声明这个域名的归属 | 由 matrix.org 的页面处理，我们管不了 |
+| `https://dev.unseal.chat/AgentMessenger/to-share/#/…` | `LinkRouter` 认 | — | 默认（Q11）：在 unseal-webapp 的 `res/to-share/` 里加一小段跳转脚本（P4） |
+| `zymix://unseal/…` | 只有 ZYMIX 会收到；我们的解析器也认（比如用户粘贴进来的） | — | — |
+| `matrix:` | `LinkRouter` 认 | 不注册 `matrix` scheme | — |
+| 已经发出去的 pill | 继续能用 | — | — |
 
-**推出顺序（不能乱）**：
-1. 所有客户端的解析器先发版，包括 `openLink` 钩子。
-2. 落地页和 `.well-known` 上线，并检查通过。
-3. 客户端才开始**生成**新链接。
-
-如果反过来，先生成了新链接，旧版本的客户端点到会被交给浏览器，只能靠落地页兜底。
+**推出顺序：**
+1. 先上线解析器和 `LinkRouter`：C1、C2、I1a、I2、Z1、Z3、S0、S1、S3。
+2. 再上线落地页和 `.well-known`：P1–P3。
+3. 然后验证 UL：Z4、S4。
+4. 最后才开始生成新链接：Z2、S2。
 
 ---
 
@@ -325,132 +345,154 @@ Link =
 
 ### 8.1 开放重定向
 
-- 落地页只会跳到三类地址：自己拼出来的 scheme 链接（只用解析出来的类型和 ID 重新编码）、写死的商店地址、本域名下的规范路径。**链接里的任何地址都不会被当成跳转目标**。删掉 `web-instance[…]` 和 `client`。
-- ID 必须通过 §4.1 的检查（字符集、长度、不能含 `/`）。不通过就显示“链接无效”，HTTP 状态码 404，**不跳转**。
-- App 内也一样：`openLink` 只处理解析成功的链接，其他链接按原规则交给系统（只放行 http 和 https，不能带凭据，现有的规则保持不变）。
+- 落地页只会跳到三类地址：用解析结果重新拼出来的地址、写死的商店地址、本 host 下的规范路径。
+- `client` 和 `web-instance` 两个参数一律忽略。
+- 旧片段只在白名单里的前缀上才解析（向量 `lx-unknown-base`）。
 
 ### 8.2 冒充和劫持
 
-- **自定义 scheme 谁都能注册**：iOS、Android、Windows 上都没法保证 scheme 归谁。所以 scheme 链接里不放任何凭据或令牌；**会改状态的动作**（加入房间、发起私聊、接受邀请）都要在 App 内确认。确认页显示解析出来的房间名、服务器和成员数，这些信息要登录后从自家服务器取。
-- **自动加入**：`Zymix.js:17-19` 和 `Coor.swift:211` 写的是“打开就加入”，这一点要改成“先确认”（ZYMIX 那边的改动见 §9）。
-- **只认自家服务器**：联邦关闭，所以用户、房间、别名的服务器不是本条发布线的 `server_name` 时，直接拒绝，并提示“不是 ZYMI 的链接”；`via` 一律不参与解析。
-- **长得像的链接**：在 App 里点链接时，打开前的确认页显示的是真实目标，而不是消息里的链接文字。宿主钩子拿到的是真实的 URL，不是锚文本。
-- **两个 App 抢同一个域名**：ZYMI 和 ZYMIX 不能出现在同一个域名的 AASA 和 assetlinks 里（Q4），否则系统会随便选一个。
+- **scheme 谁都能注册。** scheme 链接里不放令牌；加入房间、发起私聊、接受邀请这类会改状态的动作，都要先在 App 内确认。确认页显示的是登录后从自家服务器取来的房间名和成员数，而不是消息里的链接文字。
+- **服务器名检查只用在用户 ID、别名和 v12 之前的房间 ID 上**（不开联邦；如果 B1 把开了联邦的 Unseal 纳入范围，这一条要重写）。v12 的房间 ID 和所有事件 ID 都没有服务器部分：规范链接和 scheme 链接里的，归 host 或 scheme 所在的发布线；旧链接里的，按当前发布线去打开，自家服务器说找不到就显示“打不开”。`via` 一律不参与解析。
+- **用独立的域名。** 不能和 ZYMIX 共用（理由见 §3）。
 
-### 8.3 没登录的访客在回退页上能看到什么
+### 8.3 没登录的访客能看到什么
 
-- **v1：只能看到实体类型**，比如“一个群聊”“一个任务”。看不到名字、头像、成员数、消息内容，也看不到 ID 对应的人。原因有三：
-  - matrix.to 的预览会向任意 `via` 服务器发请求，暴露访客的 IP，内容也可能被伪造（`PreviewViewModel.js:46-59`）；
-  - homeserver 的模板没有限制谁能读资料（§2.8），把落地页做成资料查询接口，就等于对外开了一个查询口；
-  - 公开的房间和资料要另外设计，见 Q7。
-- 落地页**不向任何 homeserver 或网关发请求**（CSP 的 `connect-src 'none'` 强制保证）。
-- 服务器日志里会出现路径上的 ID，这是放弃片段的代价。由于 homeserver 和落地页都是我们自己的，这是可以接受的；日志的保留时间按现有策略执行。链接里**永远**不放令牌。
+- 只能看到实体类型。落地页不请求任何 homeserver 或网关，由 CSP 强制保证。
+- 链接里**不放会话令牌或认证令牌**。邀请码、分享令牌这类能力型令牌，等将来有了后端再单独设计，**而且永远不经 scheme 转交**。v1 只预留 `/invite/` 路径。
+- 服务器日志里会出现路径上的 ID，这是放弃片段的代价，可以接受。
 
 ### 8.4 打开时的规则
 
-- Zymi 对象只有所属账号能打开。网关返回 403 或 404 时，App 都显示“打不开这个链接”，**不暴露对象是否存在**。
-- **Matrix 可选模式**（`matrix_chat` 关闭，T23）：聊天链接显示“需要先开启聊天”，不报错也不登出；Zymi 对象的链接照常能用。
-- **多个账号**：用当前账号打开；打不开的话就是上面那句“打不开这个链接”。v1 不自动切换账号。
+- Zymi 对象：网关返回 403 和 404 时，都显示同一句“打不开这个链接”。
+- Matrix 可选模式下，聊天链接显示“需要先开启聊天”。
+- 多账号时用当前账号打开，不自动切换账号。
 
 ---
 
-## 9. 各仓库的改动清单
+## 9. 改动清单
 
-每一项都是一个小任务。证明手段按 `~/.claude/CLAUDE.md` 的要求，优先用 E2E，**每项都要留下可以重复跑的产物**（`artifacts/…/summary.json` 加截图），检查项都配了对照组（对照组故意弄错一处，必须失败）。对纯解析器这类只能单独测的部分，按规矩**先列出所有可能失败的情况（也就是测试向量），再写代码**。
+证明方式优先用 E2E，每项都要留下可以重复跑的产物（`summary.json` 加截图）。对照组一律用“变异对照”：故意把某一条规则写错，对应的检查必须失败。
 
-### 9.0 先决定（不改代码）
+### 9.0 前置
 
-| ID | 内容 | 什么算完成 |
+| ID | 任务 | 状态和证明 |
 |---|---|---|
-| L0 | 负责人回答 Q1–Q4、Q6、Q9、Q11 | 本规格的状态改成“已批准”，`<LINK_HOST>` 换成实际的值 |
-| L1 | 定下测试向量：`zymi-services/fixtures/links/vectors.json`，至少覆盖 §4.4 的全部行，加上各类非法输入（坏的编码、过长、`/`、外部服务器、`javascript:`、`client=` 和 `web-instance[]`） | 向量本身经过评审。**它就是失败清单** |
+| L0 | 负责人确认或推翻 B1–B6 | 规格头部的默认假设一节随之更新 |
+| L1 | `fixtures/links/vectors.json` | **已完成（本稿）**：70 条，参考实现全部通过，变异对照失败 |
 
-### 9.1 zymi-services（zymi-core）
+### 9.1 zymi-services（分支 `feat/links`）
 
 | ID | 任务 | 怎么证明 |
 |---|---|---|
-| C1 | `crates/zymi-core/src/links.rs`：`parse`、`build`、`handoff`，带发布线配置（host 列表、scheme、server_name） | `cargo test` 跑完全部向量。**对照组**：把向量里的一项期望值改掉，测试必须失败 |
-| C2 | 通过 zymi-ffi 和 zymi-wasm 暴露出去；`check-surface.sh` 通过 | `apple/ZymiCore` 的 Swift 测试，和 `scripts/test-web.sh` 里的 wasm 测试，跑同一份向量 |
+| C1 | `links` 模块，实现 §4.1 和 §4.2，做成自由函数；把向量拷到 `fixtures/links/vectors.json`，再加一个脚本，检查这份拷贝和本仓库的那份逐字节一致 | `cargo test` 跑完全部向量和来回测试。变异对照：拿掉白名单校验，`x-zymi-encoded-slash` 必须失败 |
+| C2 | 通过 zymi-ffi 和 zymi-wasm 导出，`check-surface.sh` 通过 | 经过 ZymiCore 的 Swift 测试和 wasm 测试跑同一份向量 |
 
-### 9.2 落地页（`zymi-matrix.to`；用哪个仓库见 Q12）
-
-| ID | 任务 | 怎么证明 |
-|---|---|---|
-| P1 | 换成精简的新页面：只做路由（规范路径加旧片段）、换品牌、“在 App 中打开”和商店入口；删掉预览、客户端列表、`client` 和 `web-instance`。保留 Apache-2.0 的版权声明 | 用 Playwright 对本地构建跑每一条向量 URL：页面显示的实体类型对，“打开”按钮的 href 等于向量里该平台期望的 scheme 链接（用 Playwright 模拟各平台的 UA）；恶意输入不跳转。除了同源的静态文件，不发任何网络请求（Playwright 记录所有请求，非同源请求数必须为 0）。产物：`artifacts/landing/<ts>/summary.json` 和截图。**对照组**：同样的测试拿去跑上游 matrix.to 的构建，必须失败（有预览请求，`client` 参数会生效） |
-| P2 | 按发布线生成 `.well-known/apple-app-site-association` 和 `assetlinks.json` | 本地：生成的 JSON 符合 §6.1 和 §6.3 的格式，`appIDs` 和包名等于发布线配置。部署后：`curl -sI` 返回 200，`application/json`，没有重定向；`https://app-site-association.cdn-apple.com/a/v1/<LINK_HOST>` 能拿到；`https://digitalassetlinks.googleapis.com/v1/statements:list?source.web.site=https://<LINK_HOST>&relation=delegate_permission/common.handle_all_urls` 能列出这个包。结果写进 `summary.json` |
-| P3 | 部署（托管和 DNS 见 Q6），加上 CSP 和 HSTS 等响应头 | 用 `curl` 抓响应头存下来；用 Playwright 打开线上页面，确认控制台没有 CSP 报错 |
-| P4 | 如果 Q11 决定留着旧落地页：给 `dev.unseal.chat/…/to-share/` 加跳转脚本，在 `../matrix.to` 里改 | 用 Playwright 打开旧链接，最后的 URL 等于规范链接。**对照组**：无效的旧片段停在“链接无效”页 |
-
-### 9.3 im（IMKit Swift）
+### 9.2 落地页（本仓库）
 
 | ID | 任务 | 怎么证明 |
 |---|---|---|
-| I1 | 新增 `ChatLinkBuilder` 协议；`MatrixShareLinks` **保留**，改成这个协议的一个内置实现，因为 ZYMIX 在 `zymix-im-ios/SiuperMatrix/Sources/SiuperMatrix/MatrixDemoRuntime.swift:415-416` 里直接构造它；默认实现还是 matrix.to。同时**去掉 pill 的改写**（`MatrixOutgoingHTML.swift:21-31`），让 pill 始终是 matrix.to 写法（D3）；这会改变 ZYMIX 发出去的 pill（见 X2） | zim 的 `MessageShareTests` 和 `SpaceSettingsTests`：DEBUG 环境变量 `ZIM_E2E_SHARE_LINKS=matrixto` 让 zim 不注入（作为对照），这时还是 matrix.to；默认注入时等于向量。`MentionTests.swift:62` 在注入状态下仍然断言 matrix.to 的 pill |
-| I2 | 宿主钩子 `openLink(URL) -> Bool`，在 iOS 的 `MessageRowView.swift:439`、`HostMessageHooks.swift:61` 和 Mac 的 `Message.swift:372` 这三个地方先问宿主 | 见 Z3 和 S3 |
-| I3 | 判断收到的 pill 时，也认规范的 `/u/` 路径写法（`MatrixHTML.swift:119-140`）；**发出去的写法不变** | 给 `MatrixHTML` 已有的集成测试加 `/u/` 路径写法的 pill。对照组：外部 host 加上非 `@` 开头的路径，不能被当成 pill |
+| P1 | 用精简的新页面加边缘函数替换现有页面（§6.5），保留 Apache-2.0 的版权声明 | 用 Playwright 加本地的边缘函数运行环境，跑每一条向量 URL：状态码对、显示的类型对、“打开”按钮的 href 等于各平台 UA 下期望的 handoff；除了同源的静态文件，没有任何别的请求。变异对照：把解析器改成接受空段，`lx-protocol-relative` 必须失败。产物放在 `artifacts/landing/<ts>/` |
+| P2 | 按发布线生成 `.well-known`（**被 B3 阻塞**） | 本地检查格式；上线后检查 200、`application/json`、没有重定向；用 Apple CDN 的接口和 Google 的 `statements:list` 接口查到 |
+| P3 | 部署和响应头（被 B2、B5 阻塞） | 用 `curl` 存下响应头；检查 `/task/a%2Fb` 返回 404，并且确实到了函数里，没被托管先拦掉；`/r/a%2Fb:zymi.app` 返回 200 |
+| P4 | 旧落地页加跳转，改 unseal-webapp 的 `res/to-share/`（Q11） | 用 Playwright 打开 §7 里的旧链接，最后停在规范链接上；`#//evil.example/` 停在“链接无效” |
 
-### 9.4 zim（macOS）
+### 9.3 im（IMKit）
 
-| ID | 任务 | 怎么证明（XCUITest，用 `scripts/e2e.sh -only-testing:ZIMUITests/DeepLinkTests/...` 跑） |
+| ID | 任务 | 怎么证明 |
 |---|---|---|
-| Z1 | 在 `ZIMApp.swift` 里加 `zim://open/…` 的入口，调用 `zymi-core.links.parse`，再路由到 IMChatMac 或 `ZymiRoute` | 测试用 `NSWorkspace.open` 打开 `zim://open/roomid/<种子房间>` 后，中栏是这个房间；打开 `…/e/<事件>` 后，跳到那条消息并高亮；打开 `zim://open/task/<id>` 后进到任务页；没加入的房间先出确认页；外部服务器、以及 `zim://open/../x` 这类输入不跳转，并给出提示。截图放在 `artifacts/e2e/<ts>/`。**对照组**：`zim://share?inbox=` 的分享流程不受影响（`ShareTests` 照样通过） |
-| Z2 | 正式构建按发布线注入 `ChatLinkBuilder`，同时改掉断言 matrix.to 的几个测试（`SpaceSettingsTests.swift:147`、`MessageShareTests.swift:177, 181`；`MentionTests.swift:62` 保持不变，因为 pill 的写法不变） | 复制房间链接和消息链接，结果等于向量。**来回测试**：把复制出来的链接再用 Z1 的方式打开，要回到同一个房间、同一条消息 |
-| Z3 | 实现 `openLink` 钩子：在消息里点到自家链接时，在 App 内跳转 | bob 发一条带 `https://<LINK_HOST>/roomid/…` 的消息，alice 点了以后在 App 内打开，**没有拉起浏览器**（断言 Safari 进程没有变化）。对照组：`https://example.com` 照样交给系统 |
-| Z4 | entitlements 加 associated domains，加 `.onContinueUserActivity` | **只能在签好名、域名已经上线的 staging 环境验证**：用 Safari 打开 https 链接，应该进到 ZIM。本地 E2E 跑不了，要写明这一点 |
+| I1a | 加 `ChatLinkBuilder` 和 `ChatLinkOpener` 两个注入点；`MatrixShareLinks` 作为内置实现，**默认行为完全不变**；`SpaceHome.swift:342-344` 改成走 builder | ZYMIX 不用改代码；zim 的 `MessageShareTests` 和 `SpaceSettingsTests` 在不注入的对照下行为照旧 |
+| I1b | 去掉 pill 改写（`MatrixOutgoingHTML.swift:21-31`）。**归 ZYMIX 负责人（B6）**，和 X2 一起排期 | ZYMIX 的 E2E 确认发出的 pill 是 matrix.to 写法 |
+| I2 | IMKit 里所有交给系统的地方都先调 `ChatLinkOpener`：iOS 的 `MessageRowView`、`HostMessageHooks`、`RoomInfoView`；Mac 的 `Message.swift` 和 `NativeMessageCell` | 不单独测，由 Z3 和 S3 证明（理由见 §12） |
+
+### 9.4 zim
+
+| ID | 任务 | 怎么证明（XCUITest，用 `scripts/e2e.sh -only-testing:ZIMUITests/DeepLinkTests/...`） |
+|---|---|---|
+| Z1 | Debug 注册 `zim-debug`；`.onOpenURL` 加 `open` 分支，交给 `LinkRouter` | 用 `XCUIApplication().open(url)` 打开链接（**这个 API 在 macOS 上能不能用待确认**；不能用就退回 `NSWorkspace.open(_:withApplicationAt:configuration:)`，指定被测的那份 App）。打开 `zim-debug://open/roomid/<种子 v12 房间>`，中栏显示这个房间；`…/e/<事件>` 跳到消息并高亮；`/task/<id>` 进到任务页；没加入的房间先出确认页；`zim-debug://open/../x` 显示“请更新 App”（`unknown_kind`）；`/u/x:evil.example` 显示“链接无效”。对照：`ShareTests` 照常通过 |
+| Z2 | 正式构建注入 `ChatLinkBuilder`，同时改掉断言 matrix.to 的那几个测试（`MentionTests.swift:62` 不用改） | 复制出来的房间链接和消息链接等于 `build` 向量的格式；把复制出来的链接再用 Z1 的方式打开，能回到原处。对照：设 `ZIM_E2E_SHARE_LINKS=matrixto` 时，链接是 matrix.to |
+| Z3 | `LinkRouter` 接管 §2.3 列出的 15 处和 IMChatMac 的两处 | 打开调试开关，bob 发一条 `https://<dev host>/task/<id>`，alice 点了以后，日志里出现 `link-route task`，**没有** `debug-open` 或 `link-system`；`https://example.com` 出现 `link-system`。zim 的 `rg` 检查（§5.2）通过 |
+| Z4 | entitlements 加 associated domains，加 `.onContinueUserActivity`（被 B2、B3 阻塞） | 只能在 staging 环境的签名构建上验证，本地跑不了 |
 
 ### 9.5 zymi-ios
 
 | ID | 任务 | 怎么证明 |
 |---|---|---|
-| S1 | 在环境配置里加 `associated_domains`；App 根上加 `.onOpenURL` 处理 `<scheme>://open/…`，加 `.onContinueUserActivity` 处理 UL；登录前收到的链接先存起来 | 在模拟器上用 XCUITest：`xcrun simctl openurl booted '<scheme>://open/task/<id>'` 打开任务；在登录页收到的链接，登录后自动打开。截图加 `summary.json`。**对照组**：`<scheme>://connectors` 这条回调不受影响 |
-| S2 | `ZymiChatMatrix.swift:135` 注入 `ChatLinkBuilder` | 在 App 内复制房间链接，结果等于向量 |
-| S3 | 实现 `openLink` 钩子 | 同 Z3，iOS 版 |
-| S4 | Universal link 端到端 | 用 `?mode=developer` 的开发构建，加上 staging 域名，在真机或模拟器上从 Safari 打开 https 链接，应该进到 App |
+| S0 | 合并 `feat/zymi-core-s1`，让 zymi-ios 接上 ZymiCore（属于 zymi-ios 已有的工作，不是本规格新增的） | 以 zymi-ios 自己的 E2E 为准 |
+| S1 | 放宽 `environment.py:123` 和 `signing.py:29-30`；根上加 `onOpenURL`（只认 `open`）和 `onContinueUserActivity`；登录前收到的链接先存起来 | XCUITest 加 `xcrun simctl openurl`：任务链接能打开，登录前收到的链接登录后自动打开。对照：从 Safari 打开 `<scheme>://connectors?link_id=x`，App 什么都不做 |
+| S2 | `ZymiChatMatrix.swift:135` 注入 `ChatLinkBuilder` | 复制出来的链接等于向量的格式 |
+| S3 | `LinkRouter`；盘点 zymi-ios 里所有打开 URL 的地方 | 同 Z3 |
+| S4 | UL 端到端（被 B2、B3 阻塞） | 用 developer 模式加 staging 域名，在真机上测 |
 
-### 9.6 im-android
-
-| ID | 任务 | 怎么证明 |
-|---|---|---|
-| A1 | `ChatLinkBuilder` 注入点（`MatrixChatClient.kt:1070`），`openLink` 钩子，pill 也认 `/u/` 写法 | `sample` 模块的 androidTest：注入后房间信息里的链接等于向量（`Phase25Test.kt:64` 现在断言的是 matrix.to，作为对照）；在消息里点到自家链接时调用了钩子 |
-
-### 9.7 范围外但相关（要单独决定）
+### 9.6 挂起或交给别人（B1、B6）
 
 | ID | 仓库 | 任务 |
 |---|---|---|
-| X1 | `../matrix.to`（unseal fork） | **马上可以修的缺陷**：在 ZYMIX 安卓支持 `zymix://unseal/…` 之前，把 Android 从 `Zymix.js:38-46` 的平台列表里拿掉。要不要修由负责人决定 |
-| X2 | zymix-im-ios | 把 `zymix://unseal/room` 改成“先确认再加入”（§8.2）；I1 发布后，确认 `MatrixShareLinks(base:clientID:)` 照常能用，并接受 pill 不再改写到 `dev.unseal.chat`；如果 Q1 和 Q4 决定共用语法，再接 §4 的写法 |
-| X3 | zymix-im-android-cloud | 在 `DeepLinkRouter` 里加 `/unseal/room/{id}` 和 `/unseal/user/{id}`，或者按 Q1 接 §4 的写法 |
-| W1 | Windows（仓库还没有） | Q5 定了以后：注册 scheme、单实例转发，MSIX 的话再加 AppUriHandler；E2E 用 `start <scheme>://open/…` 打开，检查窗口里显示的内容 |
-| B1 | 运维（仓库未知） | 每条发布线的 `<LINK_HOST>` 的 DNS 和 TLS；`zymi.app/.well-known/matrix/client`（`SPEC-zymi-matrix-session.md:156`） |
-| B2 | 网关（仓库未知） | 以后要做的：分享令牌和公开预览接口（Q7） |
+| A1 | im-android | 加 `ChatLinkBuilder` 和 `ChatLinkOpener` 注入点。对照组：不注入时，链接以 `https://matrix.to/#/` 开头。`Phase25Test.kt:64` 当不了对照，因为它断言的是 `contains("matrix.to") || contains(roomId)` |
+| W1 | Windows | 见 §6.4 |
+| X1 | `../matrix.to` | 从 `Zymix.js:38-46` 删掉还没核实支持的平台：Android 一定删，Windows、macOS、Linux 先核实 ZYMIX PC 端再说 |
+| X2 | zymix-im-ios | 加入房间前先确认；配合 I1b |
+| X3 | zymix-im-android-cloud | 加 Unseal 路由，或者接本规格的语法 |
+| B-ops | 运维 | DNS 和 TLS；`zymi.app/.well-known/matrix/client` |
 
-**建议顺序**：L0 → L1 → C1 → C2 → I1、I2、I3 → Z1、Z3、S1、S3、A1（只做解析，不生成） → P1、P2、P3 → Z4、S4 → Z2、S2（开始生成新链接） → P4、X1–X3 → W1。
+**建议顺序：** L1（已完成）→ C1 → C2 → I1a、I2 → Z1、Z3、S0、S1、S3 → P1–P3 → Z4、S4 → Z2、S2 → P4、I1b、X1–X3。
 
 ---
 
 ## 10. 验收
 
-- 所有客户端和落地页都跑通同一份向量：Rust、Swift（经过 ZymiCore）、wasm、JS 四份结果一样。
-- 链接能来回：每个平台生成的房间、消息、用户、任务链接，再从这个平台打开，回到同一个对象（Z2、S2）。
-- 旧链接：§7 表格里的每一行都至少有一个 E2E 覆盖。
-- 安全：P1 的恶意输入全部不跳转、不发网络请求；Z1、S1 遇到外部服务器一律拒绝；加入房间一定要先确认。
-- 产物：每一项都有 `summary.json` 和截图，截图要人看过（zim 的 `CLAUDE.md` 要求：“断言通过不等于界面没问题”）。
+- 每个实现都跑通 `vectors.json` 的全部条目和来回测试，并且有一个变异对照证明测试确实会失败。
+- 规格 §7 表格里的每一行，至少有一个 E2E 覆盖。
+- 产物里的截图要有人看过。
 
 ---
 
 ## 11. 要负责人回答的问题
 
-| # | 问题 | 为什么要问 | 建议 |
-|---|---|---|---|
-| Q1 | 分享链接属于哪个产品：ZYMI（zim、zymi-ios，域名 `zymi.app`）、ZYMIX（`zymix.io`，已有 `oia.*` 这套 UL），还是两个都要？ | 代码里有四组域名（§3），都可以说是“我们的产品域名” | ZYMI 用 `zymi.app` 的子域名；ZYMIX 保留自己的 `oia.zymix.io` |
-| Q2 | 具体 host 叫什么，每条发布线怎么命名？（`to.zymi.app`、`link.zymi.app`？加 `-dev`、`-testing` 后缀？） | AASA、assetlinks、entitlements 都要写死这个值 | 用专用子域名，每条发布线一个 |
-| Q3 | 生产环境的 Bundle ID 和 Team ID：zymi-ios 只有本地的 `local.zymi.dev`；zim 的 `VZZQ2Q6734` 在 `Unseal.js` 的注释里被称为开发团队。安卓的包名和 Play 签名 SHA-256 是什么？zymi-ios 生产环境的 `callback_scheme` 是什么，安卓和 Windows 用什么 scheme（scheme 表，§5）？ | AASA 和 assetlinks 要用 | — |
-| Q4 | 一台设备上同时装了 ZYMI 和 ZYMIX，聊天链接应该由哪个打开？ | 两个 App 不能在同一个域名上抢链接（§8.2） | 用不同的域名，各开各的 |
-| Q5 | Windows 客户端：C#（uniffi-bindgen-cs）还是 Electron（zymi-wasm）？打不打包成 MSIX？仓库在哪？ | 决定 §6.4 用哪种做法、W1 怎么测；`PCScanLoginRouteHandler` 说明可能已经有一个 PC 客户端 | — |
-| Q6 | 落地页托管在哪里（`dev.unseal.chat` 那个页面是怎么部署的？），DNS 归谁管？ | 两个仓库里都没有部署配置 | — |
-| Q7 | Zymi 对象（产物、目标、任务）要不要支持跨账号分享或公开？要的话需要后端提供分享令牌和公开预览 | 内核和网关都没有这个概念 | v1 只做本账号内的导航链接 |
-| Q8 | 有没有可以回退过去的 Web 客户端（`SPEC-zymi-web.md` 里提到了，但还没有 App）？ | 决定落地页上要不要“在网页中继续” | v1 不做 |
-| Q9 | 各商店的 ID：ZYMI 的 App Store 和 Mac App Store、Play、Windows 下载页 | 落地页的下载入口要用 | — |
-| Q10 | 发出去的 pill 是不是永远用 `https://matrix.to/#/@…`？ | 能和 Element 等客户端互通；我们的接收方本来就不看域名 | 是 |
-| Q11 | 旧落地页 `dev.unseal.chat/AgentMessenger/to-share/` 留不留？域名归谁？ | 决定已经发出去的旧链接会不会失效 | 留着，加一个跳转 |
-| Q12 | 新落地页放在哪个仓库：`zymi-matrix.to`（现在和上游一样，没改过），还是把 `unseal-network/matrix.to` 的改动搬过来，或者另开一个仓库？ | 新页面需要的东西和 matrix.to 差别很大 | 就在 `zymi-matrix.to` 里重写成精简版，保留许可证 |
+**阻塞实现的：**
+- B3：Team ID、Bundle ID、各平台的 scheme、签名指纹，以及 zim 的分发方式（Developer ID 还是 Mac App Store）。被它阻塞的是 P2、Z4、S4、prod 的 handoff 向量和商店入口。
+- B1、B2、B4、B5：已经有默认值，负责人确认或推翻即可。
+- B6：交给 ZYMIX 的负责人。
+
+**不阻塞、按默认值走的：**
+
+| 问题 | 默认值 |
+|---|---|
+| Q7 跨账号分享 | v1 不做 |
+| Q8 Web 回退 | v1 不做 |
+| Q9 商店 ID | 先用占位 |
+| Q10 pill 写法 | 永远用 matrix.to 写法 |
+| Q11 旧落地页 | 保留，加跳转（P4） |
+| Q12 落地页仓库 | 用本仓库 |
+| 生产环境的 homeserver | 是否和 dev 模板一样关了联邦和访客、资料接口要不要登录才能读，需要核对 |
+
+**给协调者的：** zim 的 ZymiCore 什么时候改回指向 main（见 §5.1）。
+
+---
+
+## 12. 评审答复
+
+| 编号 | 处理 | 说明 |
+|---|---|---|
+| F1 | 采纳 | 新增 §2.9；§2.6 改成“在不在范围内由 B1 定”；D1 的理由不再引用 ZYMIX 的 minSdk。补充一点：Unseal Electron 注册的 `unseal` scheme 名字叫 “OIDC Callback”，是给登录回调用的，**不是**分享链接，能复用的只有单实例转发 |
+| F2 | 采纳 | 向量里两种房间 ID、带端口的 server name、标准 base64 的事件 ID 都有了；ID 按第一个 `:` 切；§8.2 已重写 |
+| F3 | 采纳 | §4.1 逐字节写死了生成规则，并写明不能用 `encodeURIComponent`；§4.2 改成“先切段，再解码，再校验”，以 WHATWG 规范化之后的结果为准，Zymi ID 用白名单；评审列的边界情况都进了向量。我按 Matrix 规范对别名的规定，认为别名的 localpart 允许含 `/`（U9），向量 `p-alias-slash` 依此而写，**这一点没有对照规范原文核实** |
+| F4 | 采纳 | 新增 B4；Debug 另外注册 `zim-debug`；Z1 改用 `XCUIApplication().open`，并给出不能用时的退路；收到别的发布线的链接时提示 `other_lane` |
+| F5 | 采纳 | §5.2 规定每个 App 一个 `LinkRouter`，附上调用点清单和 `rg` 检查；Z3 改用日志判定 |
+| F6 | 采纳 | C1 写明在 `feat/links` 分支，做成自由函数；新增 S0 |
+| F7 | 采纳 | 放进 S1 |
+| F8 | 采纳 | §4.4、§8.3：邀请码只预留路径，能力型令牌永远不经 scheme 转交 |
+| F9 | 采纳，选了边缘函数（B5） | §6.5 写了 404、SPA 回退和原始路径的要求；P3 有 `%2F` 的检查 |
+| F10 | 采纳 | 拆成 I1a 和 I1b，I1b 归 B6 |
+| S1 | 采纳 | Q6、Q11 补了 unseal-webapp 的证据；Q4、Q10 直接定为默认值 |
+| S2 | 采纳 | 删掉 I3：pill 写法冻结以后，不会再有 `/u/` 形式的 pill |
+| S3 | 采纳 | 并入 I1a |
+| S4 | 采纳 | 写进 §6.1，S1 加了对照 |
+| S5 | 采纳 | §4.3 规定 `unknown_kind` 和 `reserved` 提示“请更新 App”；落地页加了更新提示 |
+| S6 | 采纳 | 对照组全部改成变异对照 |
+| S7 | 采纳 | 写进 §6.3 |
+| S8 | 采纳 | 写进 X1 |
+| S9 | 采纳 | 删掉 `exclude` 那条；预留路径 `/invite/*` 和 `/team/*` 一次写进 AASA |
+| S10 | 采纳 | §1 已改 |
+| 评审 §二：“I2 没有独立的证明” | **不采纳单独测试** | I2 只是把调用改成先问注入点，用户真正能看到的效果只有在宿主里才看得到。按“只用 E2E”的约定，由 Z3 和 S3 来证明更直接；只给 IMKit 写隔离测试，既重复，也证明不了宿主真的接上了 |
+| 本稿自己新增的改动 | — | 旧片段写法只在**白名单前缀**上才认（第一稿写的是任何 host 都认，那样会把陌生网站的链接也拦进 App）；解析结果新增 `not_ours` 和 `other_lane` 两种；向量的权威副本放在本仓库，不再放在 zymi-services |
+| U1–U9 | 记录在案 | 都标了待确认，并且放在了会受影响的那一节里：U1 对应 §4.2 第 1 条，U2 对应 B4 和 Z1，U3、U4、U5 对应 §6.2、§6.5 和 Z4、S4，U6 对应 §8.2，U7 对应 B3，U8 对应 B1，U9 对应 F3 那一行 |
