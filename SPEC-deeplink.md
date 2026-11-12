@@ -168,16 +168,16 @@
 5. Zymi 对象的 ID 必须匹配 `[A-Za-z0-9_-]{1,128}`，保留大小写；不匹配就不生成，报 `invalid_id`。由于不含 `.`，生成的路径段不可能是点段。
 6. 给不是本发布线 `server_name` 的用户、别名或旧房间 ID 生成链接时，报 `foreign_server`。
 7. scheme 写法：`<scheme>://open<和 https 一样的路径>`。scheme 来自发布线配置里按平台列出的那张表（§5.3）。
-8. **Matrix ID 的语法**（生成和解析共用；生成时不合法报 `invalid_id`，解析时判 `malformed`）。依据是 Matrix 规范的 Identifier Grammar 附录和各房间版本的说明：
+8. **Matrix ID 的语法**（生成和解析共用；生成时不合法报 `invalid_id`，解析时判 `malformed`）。依据是 Matrix 规范（spec.matrix.org，2026-11-13 对照原文）的 Appendices › Identifier Grammar 和 Room Versions v1、v3、v4。规范对多数 localpart 只排除 `:` 和 NUL；下表凡比规范严的都写明是“收紧”和理由：不开联邦，能链接的 ID 只来自我们自己的服务器（Synapse），它生成的 ID 都在下表范围内。
 
    | 类型 | 接受 | 依据和说明 |
    |---|---|---|
-   | 用户 | `@localpart:server`，localpart 是 `0x21`–`0x7E` 中除 `:` 以外的字节 | 规范的“历史用户 ID”语法（比现行的 `[a-z0-9._=/+-]` 宽，旧账号仍要能打开）；不能以 `@` 开头 |
-   | 别名 | `#localpart:server`，localpart 不含控制字符（Cc）、格式字符（Cf，含 U+202E 等 bidi 控制符和零宽字符）、空白 | 规范只排除 `:` 和 NUL，这里更严：这些字符能让显示出来的 ID 和真实 ID 不一样。允许 `/` 和非 ASCII（U9 已按规范核实）。不能以 `#` 开头 |
-   | 房间（v12 之前） | `!opaque:server`，opaque 是 `[A-Za-z0-9._~-]` | 规范的 opaque identifier 语法 |
+   | 用户 | `@localpart:server`，localpart 是 `0x21`–`0x7E` 中除 `:` 以外的字节 | 收紧。现行语法是 `[a-z0-9._=/+-]`；规范的 Historical User IDs 要求客户端接受除 `:`、NUL 以外的任何码点，但明说 U+0021–U+007E 以外的是“不合规”的（这个范围也是旧版规范的历史语法）。我们取这个合规范围：旧账号能打开，非 ASCII 和 bidi 控制符进不来。不能以 `@` 开头 |
+   | 别名 | `#localpart:server`，localpart 不含控制字符（Cc）、格式字符（Cf，含 U+202E 等 bidi 控制符和零宽字符）、空白 | 规范（Room Aliases）只排除 `:` 和 NUL；这里收紧：这些字符能让显示出来的 ID 和真实 ID 不一样。允许 `/` 和非 ASCII（U9：已对照规范原文，成立）。不能以 `#` 开头 |
+   | 房间（v12 之前） | `!opaque:server`，opaque 是 `[A-Za-z0-9._~-]` | 收紧。规范（Room IDs）允许除 `:`、NUL 以外的任何码点，只说生成时 SHOULD 用字母数字；这里取规范 Opaque Identifiers 的字符集，挡住 `/`、`..`、`?` |
    | 房间（v12） | `!opaque`，`[A-Za-z0-9_-]` | 创建事件引用哈希的 URL 安全 base64 |
-   | 事件（房间 v3 起） | `$` 加 `[A-Za-z0-9+/=_-]` | v3 用标准 base64（**含 `+` 和 `/`，是真实数据，不能拒**），v4 起用 URL 安全 base64 |
-   | 事件（房间 v1、v2） | `$opaque:server`，opaque 同上 | 不检查服务器 |
+   | 事件（房间 v3 起） | `$` 加 `[A-Za-z0-9+/=_-]` | 规范：v3 是引用哈希的无填充 base64，“可能含斜杠”（**`+` 和 `/` 是真实数据，不能拒**）；v4 起是 URL 安全的无填充 base64。`=` 多收一个，无害 |
+   | 事件（房间 v1、v2） | `$opaque:server`，opaque 同房间 | 收紧。规范只说 opaque 是“locally-unique string”，没有字符集；Synapse 生成的是字母。不检查服务器 |
 
    - Matrix ID 一律不超过 255 字节（含 sigil 和服务器）。server name 形如 `hostname`、`IPv4` 或 `[IPv6]`，可以带 `:port`。
    - server name **一律转成小写**再生成、再返回（`@x:ZYMI.APP` 返回 `@x:zymi.app`）；事件 ID 原样保留（base64 区分大小写）。
@@ -185,7 +185,7 @@
 
 ### 4.2 解析规则（按顺序执行）
 
-0. **长度上限。** 输入超过 4096 字节时只读前 4096 字节（退到字符边界），不再完整解析，保证工作量有界。这一截按本节规则判定：判成链接或拒绝的（是我们的）→ 一律 `malformed`，不交回系统；`other_lane` 不变；`not_ours` 不变（长的普通链接照常打开；自家 host 的首页、没有 `#/` 的旧前缀也照旧是 `not_ours`）。合法链接最长也不到 2 KiB（255 字节的 ID 每个字节都编码，再加事件 ID）。
+0. **长度上限。**（向量 `x-too-long-ours`、`x-too-long-foreign`、`x-too-long-root`） 输入超过 4096 字节时只读前 4096 字节（退到字符边界），不再完整解析，保证工作量有界。这一截按本节规则判定：判成链接或拒绝的（是我们的）→ 一律 `malformed`，不交回系统；`other_lane` 不变；`not_ours` 不变（长的普通链接照常打开；自家 host 的首页、没有 `#/` 的旧前缀也照旧是 `not_ours`）。合法链接最长也不到 2 KiB（255 字节的 ID 每个字节都编码，再加事件 ID）。
 1. **用 WHATWG URL 规范解析整串输入。** 语法定义在**规范化之后**的结果上：点段已经折叠，https 里的 `\` 已经变成 `/`，host 已经转成小写，默认端口已经去掉。Rust 的 `url` crate 和浏览器的 `URL` 都符合这个规范；Foundation 的 `URLComponents` 和 Android 的 `Uri` **不符合**，平台代码**不能自己解析**，必须交给 zymi-core。
 2. 按 scheme 和 host 分流：
    - `https` 加本发布线的 host，并且是默认端口 → 按规范路径解析；带用户名或密码判为 `malformed`；路径恰好是 `/` 的，那是网站首页 → `not_ours`。端口不是默认端口的，算另一个 origin，不是我们的 host → `not_ours`。
@@ -240,14 +240,14 @@
 
 ### 4.5 测试向量 `fixtures/links/vectors.json`（L1）
 
-- 共 111 条：生成 16 条，解析 95 条。解析的 95 条里，规范写法和 scheme 写法（`p-`）21 条，应当拒绝或判为“不是我们的”（`x-`）47 条，旧写法（`l-`）13 条，旧写法里应当拒绝的（`lx-`）14 条。每条都附一句说明。
-- 第一版 75 条；C1 安全评审第二轮补了 36 条（把 C1 实现时自己定的规则写回本规格和向量，再加上 ID 语法收紧、长度上限、凭据、`#/user/` 写法），见 §12 第二轮。
+- 共 112 条：生成 16 条，解析 96 条。解析的 96 条里，规范写法和 scheme 写法（`p-`）21 条，应当拒绝或判为“不是我们的”（`x-`）48 条，旧写法（`l-`）13 条，旧写法里应当拒绝的（`lx-`）14 条。每条都附一句说明。
+- 第一版 75 条；C1 安全评审第二轮补了 37 条（把 C1 实现时自己定的规则写回本规格和向量，再加上 ID 语法收紧、长度上限、凭据、`#/user/` 写法），见 §12 第二轮。
 - 用了三份**测试用的、按构建划分**的配置，不代表真实部署：`prod`（scheme 等 B3，所以没有 handoff 向量）；`dev`（`server_name` 假定和 prod 一样是 `zymi.app`，未确认，见评审 U6；scheme 是 `zymi-dev` 和 `zim`）；`local`（zim Debug 连本地 E2E 栈，`localhost:8448`，`zim-debug`）。解析器接受配置里列出的每一个 scheme。
 - 覆盖到的情况：
   - v12 和旧写法两种房间 ID；带端口的 server name（含端口不一致）；非默认端口；`<scheme>://open` 空路径；别的构建的 scheme；`matrix:` 下的 Zymi kind；标准 base64 的事件 ID；UTF-8 别名；含 `/` 的别名。
   - 编码过的 `:`；点段和 `%2e%2e`；反斜杠；空段；大写的 kind；结尾斜杠；host 的大小写和默认端口。
   - 跨发布线的链接；凭据；`http`；`share` 和 `connectors` 这两个 host；`#//evil.example/`；陌生 host 上的旧片段；`web-instance` 和 `client` 两个参数。
-  - 第二轮：kind 先于解码、kind 段不解码；只解码一次；C1 控制字符和非法 UTF-8；重复 sigil、bidi 控制符、房间 opaque 里的 `/`、事件 ID 的 `/../` 和 `..`；server 名转小写；形近字 host 和 `host@evil`；别的发布线的首页和凭据；超长输入（我们的和别人的）；scheme 写法和旧写法上的凭据、端口、空段；`matrix:` 的点段、authority 和段数；`#/user/@…`。
+  - 第二轮：kind 先于解码、kind 段不解码；只解码一次；C1 控制字符和非法 UTF-8；重复 sigil、bidi 控制符、房间 opaque 里的 `/`、事件 ID 的 `/../` 和 `..`；server 名转小写；形近字 host 和 `host@evil`；别的发布线的首页和凭据；超长输入（我们的、别人的、自家首页）；scheme 写法和旧写法上的凭据、端口、空段；`matrix:` 的点段、authority 和段数；`#/user/@…`。
 - 每个实现的测试都要做两件事：跑完全部向量；把每条生成出来的 url 和 handoff 再解析一遍，结果必须和原来的 link 相同（来回）。
 - **现在的参考实现是 zymi-core**（`crates/zymi-core/src/links.rs`，`cargo test -p zymi-core --test links` 跑全部向量、来回和随机输入）；下面这份 node 参考实现只对过最初的 75 条，没有跟着第二轮更新。落地页的 JS 实现以向量为准，向量没写到的情况以本节和 zymi-core 为准。
 - 写第一稿时，我在 scratchpad 里用 node 的 WHATWG `URL` 写了一份参考实现（`/private/tmp/claude-501/-Users-jelf-Projects-work-zim/4c7627bd-ec56-49a6-b260-6b8f3ad252d6/scratchpad/links-ref.mjs`，运行 `node links-ref.mjs <vectors.json>`），75 条全部通过。我故意改错其中两条，检查确实失败了。这份参考实现**不提交**，只用来证明向量本身前后一致；scratchpad 会被清理，C1 的测试才是长期的证明。
@@ -388,7 +388,7 @@ lane = {
 ### 8.2 冒充和劫持
 
 - **scheme 谁都能注册。** scheme 链接里不放令牌；加入房间、发起私聊、接受邀请这类会改状态的动作，都要先在 App 内确认。确认页显示的是登录后从自家服务器取来的房间名和成员数，而不是消息里的链接文字。
-- **服务器名检查只用在用户 ID、别名和 v12 之前的房间 ID 上**（不开联邦；如果 B1 把开了联邦的 Unseal 纳入范围，这一条要重写）。v12 的房间 ID 和所有事件 ID 都没有服务器部分：规范链接和 scheme 链接里的，归 host 或 scheme 所在的发布线；旧链接里的，按当前发布线去打开，自家服务器说找不到就显示“打不开”。`via` 一律不参与解析。
+- **服务器名检查只用在用户 ID、别名和 v12 之前的房间 ID 上**（不开联邦；如果 B1 把开了联邦的 Unseal 纳入范围，这一条要重写）。v12 的房间 ID 和房间 v3 起的事件 ID 都没有服务器部分（v1、v2 的 `$opaque:server` 有，但不检查）：规范链接和 scheme 链接里的，归 host 或 scheme 所在的发布线；旧链接里的，按当前发布线去打开，自家服务器说找不到就显示“打不开”。`via` 一律不参与解析。
 - **用独立的域名。** 不能和 ZYMIX 共用（理由见 §3）。
 
 ### 8.3 没登录的访客能看到什么
@@ -511,7 +511,7 @@ lane = {
 |---|---|---|
 | F1 | 采纳 | 新增 §2.9；§2.6 改成“在不在范围内由 B1 定”；D1 的理由不再引用 ZYMIX 的 minSdk。补充一点：Unseal Electron 注册的 `unseal` scheme 名字叫 “OIDC Callback”，是给登录回调用的，**不是**分享链接，能复用的只有单实例转发 |
 | F2 | 采纳 | 向量里两种房间 ID、带端口的 server name、标准 base64 的事件 ID 都有了；ID 按第一个 `:` 切；§8.2 已重写 |
-| F3 | 采纳 | §4.1 逐字节写死了生成规则，并写明不能用 `encodeURIComponent`；§4.2 改成“先切段，再解码，再校验”，以 WHATWG 规范化之后的结果为准，Zymi ID 用白名单；评审列的边界情况都进了向量。我按 Matrix 规范对别名的规定，认为别名的 localpart 允许含 `/`（U9），向量 `p-alias-slash` 依此而写，**这一点没有对照规范原文核实** |
+| F3 | 采纳 | §4.1 逐字节写死了生成规则，并写明不能用 `encodeURIComponent`；§4.2 改成“先切段，再解码，再校验”，以 WHATWG 规范化之后的结果为准，Zymi ID 用白名单；评审列的边界情况都进了向量。我按 Matrix 规范对别名的规定，认为别名的 localpart 允许含 `/`（U9），向量 `p-alias-slash` 依此而写。第二轮已对照规范原文核实：Room Aliases 只排除 `:` 和 NUL，成立 |
 | F4 | 采纳 | 新增 B4；Debug 另外注册 `zim-debug`；Z1 改用 `XCUIApplication().open`，并给出不能用时的退路；收到别的发布线的链接时提示 `other_lane` |
 | F5 | 采纳 | §5.2 规定每个 App 一个 `LinkRouter`，附上调用点清单和 `rg` 检查；Z3 改用日志判定 |
 | F6 | 采纳 | C1 写明在 `feat/links` 分支，做成自由函数；新增 S0 |
@@ -531,7 +531,7 @@ lane = {
 | S10 | 采纳 | §1 已改 |
 | 评审 §二：“I2 没有独立的证明” | **不采纳单独测试** | I2 只是把调用改成先问注入点，用户真正能看到的效果只有在宿主里才看得到。按“只用 E2E”的约定，由 Z3 和 S3 来证明更直接；只给 IMKit 写隔离测试，既重复，也证明不了宿主真的接上了 |
 | 本稿自己新增的改动 | — | 配置按构建给出，新增 zim Debug 的 `local` 配置（`zim-debug`）；非默认端口算 `not_ours`；`matrix:` 只认 `u`、`r`、`roomid`；`<scheme>://open` 空路径判 `malformed`；系统送进来的 `not_ours` 不再交回系统（§5.2）；`unknown_kind` 的提示改成通用的一句。旧片段写法只在**白名单前缀**上才认（第一稿写的是任何 host 都认，那样会把陌生网站的链接也拦进 App）；解析结果新增 `not_ours` 和 `other_lane` 两种；向量的权威副本放在本仓库，不再放在 zymi-services |
-| U1–U9 | 记录在案 | 都标了待确认，并且放在了会受影响的那一节里：U1 对应 §4.2 第 1 条，U2 对应 B4 和 Z1，U3、U4、U5 对应 §6.2、§6.5 和 Z4、S4，U6 对应 §8.2，U7 对应 B3，U8 对应 B1，U9 对应 F3 那一行 |
+| U1–U9 | 记录在案 | 都标了待确认，并且放在了会受影响的那一节里：U1 对应 §4.2 第 1 条，U2 对应 B4 和 Z1，U3、U4、U5 对应 §6.2、§6.5 和 Z4、S4，U6 对应 §8.2，U7 对应 B3，U8 对应 B1，U9 对应 F3 那一行（U9 第二轮已核实，见 §4.1 第 8 条） |
 
 ### 第二轮：C1 安全评审（Critical 0、High 0、Medium 3、Low 12）
 
@@ -545,5 +545,5 @@ lane = {
 | L3 | 采纳 | §5.3 配置校验，错误抛出而不是静默 |
 | L4 | 采纳 | server name 一律返回小写（§4.1 第 8 条） |
 | L5 | 采纳 | 旧片段认 `#/user/@…`（IMKit `MatrixHTML.mentionedUser` 认这种写法） |
-| 评审建议的 36 条向量 | 采纳 27 条建议（31 条向量），另加 5 条，共 +36（75 → 111） | 采纳第 1–14、16、18、25、27–35 条和第 36 条的全部四项（超长分成我们的和别人的两条）；另加 3 条生成向量（`$..`、`@@x`、bidi 别名）和别名 bidi、房间 opaque 含 `/`。**没加**第 15、17、19–24、26 条：它们只是在固定 WHATWG URL 本身的行为（结尾点的 host、反斜杠、全角字母、`%2E`、空 userinfo、`zim:open`、`zim:///`、编码过的 host），和本语法无关；第 15、17、19–21、23 条留在 zymi-core 的测试里 |
+| 评审建议的 36 条向量 | 采纳 27 条建议（31 条向量），另加 6 条，共 +37（75 → 112） | 采纳第 1–14、16、18、25、27–35 条和第 36 条的全部四项（超长分成我们的和别人的两条）；另加 3 条生成向量（`$..`、`@@x`、bidi 别名）和别名 bidi、房间 opaque 含 `/`、超长的自家首页（`x-too-long-root`，钉住“超长时按常规规则判前缀”）。**没加**第 15、17、19–24、26 条：它们只是在固定 WHATWG URL 本身的行为（结尾点的 host、反斜杠、全角字母、`%2E`、空 userinfo、`zim:open`、`zim:///`、编码过的 host），和本语法无关；第 15、17、19–21、23 条留在 zymi-core 的测试里 |
 
