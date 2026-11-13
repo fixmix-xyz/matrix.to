@@ -4,7 +4,7 @@
 
 这份规格只定设计，不写代码。所有“现状”都附了 `文件:行`，行号以 2026-11-13 各仓库的工作区为准；zim、im、zymi-services、zymi-ios 的工作区里有别人没提交的改动，行号可能会小幅偏移。
 
-本稿配套的验收数据是 `fixtures/links/vectors.json`，共 122 条，见 §4.5。
+本稿配套的验收数据是 `fixtures/links/vectors.json`，共 130 条，见 §4.5。
 
 ---
 
@@ -258,7 +258,7 @@
 
 ### 4.5 测试向量 `fixtures/links/vectors.json`（L1）
 
-- 共 122 条：生成 17 条，解析 105 条。解析的 105 条里，规范写法和 scheme 写法（`p-`）30 条，应当拒绝、判为“不是我们的”或别的发布线的（`x-`）59 条，旧写法（`l-`，只剩 matrix.to）7 条，旧写法里应当拒绝的（`lx-`）9 条。每条都附一句说明。
+- 共 130 条：生成 19 条，解析 111 条。解析的 111 条里，规范写法和 scheme 写法（`p-`）36 条，应当拒绝、判为“不是我们的”或别的发布线的（`x-`）59 条，旧写法（`l-`，只剩 matrix.to）7 条，旧写法里应当拒绝的（`lx-`）9 条。每条都附一句说明。
 - 第一版 75 条；C1 安全评审第二轮补了 37 条（把 C1 实现时自己定的规则写回本规格和向量，再加上 ID 语法收紧、长度上限、凭据、`#/user/` 写法），见 §12 第二轮。
 - 用了三份**测试用的、按构建划分**的配置，不代表真实部署：`prod`（iOS 和 macOS 的 scheme 是 `zymi`）；`dev`（`server_name` 假定和 prod 一样是 `zymi.app`，未确认，见评审 U6；iOS 和 macOS 的 scheme 都是 `zymi-dev`）；`local`（zim Debug 连本地 E2E 栈，`localhost:8448`，`zymi-debug`）。scheme 按 §5.3 的表。解析器接受配置里列出的每一个 scheme。
 - 覆盖到的情况：
@@ -272,7 +272,7 @@
 - **现在的参考实现是 zymi-core**（`crates/zymi-core/src/links.rs`，`cargo test -p zymi-core --test links` 跑全部向量、来回和随机输入）；下面这份 node 参考实现只对过最初的 75 条，没有跟着第二轮更新。落地页的 JS 实现以向量为准，向量没写到的情况以本节和 zymi-core 为准。
 - 写第一稿时，我在 scratchpad 里用 node 的 WHATWG `URL` 写了一份参考实现（`/private/tmp/claude-501/-Users-jelf-Projects-work-zim/4c7627bd-ec56-49a6-b260-6b8f3ad252d6/scratchpad/links-ref.mjs`，运行 `node links-ref.mjs <vectors.json>`），75 条全部通过。我故意改错其中两条，检查确实失败了。这份参考实现**不提交**，只用来证明向量本身前后一致；scratchpad 会被清理，C1 的测试才是长期的证明。
 - **改向量要先改这一份，再同步到 zymi-services**（C1）。
-- **L2 要补的向量（第 (2) 步，先在 core 里看红再改绿；这一步不改 `vectors.json`）。** 现有的 Zymi 对象里，https 和 scheme 两种写法只有 task 和 agent 有样例；artifact 只有生成向量 `b-artifact`，没有解析向量；goal 和 circle 两种都没有。要加的是 8 条：解析向量 `p-goal`、`p-goal-scheme`、`p-artifact`、`p-artifact-scheme`、`p-circle`、`p-circle-scheme`，生成向量 `b-goal`、`b-circle`。都用 dev 线：https 写法是 `https://to-dev.zymi.app/<kind>/<id>`，scheme 写法是 `zymi-dev://open/<kind>/<id>`。新 id 已经和 L1 之后的 122 条核对过，没有重复。§4.4 提议的新 kind（`expert`、`space`、`settings`、`me`）等 Q-A、Q-S 和 E3 定下来再补向量。
+- **L2 补的向量（第 (2) 步已加，122 → 130）。** 现有的 Zymi 对象里，https 和 scheme 两种写法只有 task 和 agent 有样例；artifact 只有生成向量 `b-artifact`，没有解析向量；goal 和 circle 两种都没有。要加的是 8 条：解析向量 `p-goal`、`p-goal-scheme`、`p-artifact`、`p-artifact-scheme`、`p-circle`、`p-circle-scheme`，生成向量 `b-goal`、`b-circle`。都用 dev 线：https 写法是 `https://to-dev.zymi.app/<kind>/<id>`，scheme 写法是 `zymi-dev://open/<kind>/<id>`。新 id 已经和 L1 之后的 122 条核对过，没有重复。§4.4 提议的新 kind（`expert`、`space`、`settings`、`me`）等 Q-A、Q-S 和 E3 定下来再补向量。
 
 ### 4.6 App 打开期望（`open` 一节，L2）
 
