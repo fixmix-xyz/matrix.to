@@ -104,6 +104,7 @@
     {"id": "x-root", "lane": "prod", "note": "The host's root is the web page, not a link: /task/.. normalises to '/'.", "input": "https://to.zymi.app/task/..", "expect": {"not_ours": true}},
     {"id": "x-encoded-dots", "lane": "prod", "note": "%2e%2e is a dot segment too (WHATWG): normalises to '/'.", "input": "https://to.zymi.app/task/%2e%2e", "expect": {"not_ours": true}},
     {"id": "x-kind-case", "lane": "prod", "note": "Kinds are lower-case and matched exactly.", "input": "https://to.zymi.app/U/x:zymi.app", "expect": {"reject": "unknown_kind"}},
+    {"id": "x-settings-pending", "lane": "prod", "note": "Page kinds (settings, me, expert, space) are pending (E3, Q-P): unknown_kind until decided. Once decided, wallet stays off the whitelist by default, so this entry stands.", "input": "https://to.zymi.app/settings/wallet", "expect": {"reject": "unknown_kind"}},
     {"id": "x-empty-segment", "lane": "prod", "note": "An empty segment ('//') is malformed, never a protocol-relative address.", "input": "https://to.zymi.app//task/deck", "expect": {"reject": "malformed"}},
     {"id": "x-zymi-encoded-slash", "lane": "prod", "note": "Zymi ids are whitelisted [A-Za-z0-9_-]: a decoded '/' fails.", "input": "https://to.zymi.app/task/a%2Fb", "expect": {"reject": "malformed"}},
     {"id": "x-zymi-non-ascii", "lane": "prod", "note": "Zymi ids are ASCII only.", "input": "https://to.zymi.app/task/%E4%BD%A0", "expect": {"reject": "malformed"}},
