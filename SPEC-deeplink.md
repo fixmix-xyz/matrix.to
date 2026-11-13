@@ -22,6 +22,7 @@
 | B3s | scheme | **负责人已定（11-13）：产品的 scheme 一律是 zymi 家族，不再用 zim。** 规则 `zymi[-<发布线>]`：prod 是 `zymi`，dev 是 `zymi-dev`，testing 是 `zymi-testing`；Debug 构建（连本地栈）是 `zymi-debug`。规范形式 `zymi://open/<路径>`。全表见 §5.3。`zim` 退役，不进旧写法（§12 第三轮）。“dev 线用 `zymi-dev` 而不是 `zymi`”是协调者按这条规则定的，负责人可推翻 | Z1、§5.3、§6.1、§6.2、向量 |
 | B4 | zim 有几条发布线 | **对外只有 dev 一条**（Release 连 dev 网关）。Debug 构建连本地 E2E 栈，`server_name` 不同（`localhost:8448`），所以它有自己的一份配置：发布线 `local`，scheme `zymi-debug`，host 用 `to-local.zymi.test`（只给 E2E 用）。E2E 靠 `zymi-debug` 定位到被测的那一份 App。每个构建只注册自己那一个 scheme，分享扩展也用它交接（Debug 是 `zymi-debug://share`，Release 是 `zymi-dev://share`；scheme 见 B3s） | Z1、§5.3、§6.2 |
 | B5 | 落地页托管 | **用能跑边缘函数的托管**，例如 Cloudflare Workers 或 Pages Functions（只是举例，不是选定） | P1、P3 |
+| B8 | 跨账号分享：Zymi 页面的链接能不能发给别人看（Q7，**待定**；L2，负责人 11-13：「需要做universal link，不止是chat im部分，还有其他的页面分享应该也要考虑」） | **默认按读法一：只有本人能打开，用于自己跨设备打开、从邮件或通知跳回 App。** 用现有规则（§4.4、§8.4），不加服务端功能。**读法二：发给别人看。** 要服务端给每个可分享的对象发分享令牌，或者加公开标记（现在只有音乐帖子 `share_url` 有，见 §4.4），§8.3 要重写（令牌放在哪、怎么吊销，永远不经 scheme 转交）。对其余阻塞项的影响：B2 的链接域名上要多出公开页面，或者把公开页面放到另一个域名；B3 不受影响；托管（B5）要从“边缘函数只判断类型”变成“边缘函数要读服务端，做预览”，CSP 的 `connect-src 'none'` 要放开；落地页（§6.5）要多出“访客能看到内容”这一种状态 | 读法二影响：§4.4、§6.5、§8.3、§8.4、P1、P3，以及服务端（不在本规格范围内） |
 | B7 | App 内点到的非自家链接，哪些 scheme 交给系统（**待负责人确认**） | **回复正文里的链接只放行 http 和 https。核心卡片的动作按钮另外放行 `mailto:`、`tel:`、`sms:`、`maps:` 四种**，正好是 zymi-core 卡片动作允许的 scheme（`cards/actions.rs` 的 `ALLOWED_SCHEMES`）。别的 scheme 一律不交给系统，并提示「ZIM 不打开这种链接」 | Z1、Z3、§5.2，zymi-ios 的 S3 |
 
 ### 0.2 五个关键决定
@@ -83,9 +84,9 @@
 |---|---|---|
 | 构建身份 | Debug 和 Release **共用** Bundle ID `ai.pagepeek.zim` 和 `ZIM.entitlements`；Release 连的也是 dev 网关 | `project.yml:121-124, 142, 144` |
 | scheme | 11-05 起注册 `zim`，给分享扩展用：`zim://share?inbox=<id>`；11-13 起每个构建注册自己的一个（Release `zim`，Debug `zim-debug`），并接 `<scheme>://open`。**按 B3s 改成 `zymi-dev` 和 `zymi-debug`**（§12 第三轮） | `project.yml:127-134, 162, 171, 199, 206`，`Shared/ShareInbox.swift:4` |
-| 处理入口 | `.onOpenURL` 只处理 ShareInbox 和文件，别的 URL 直接丢掉 | `Sources/ZIMApp.swift:191-214` |
-| Associated Domains | 没有 | `ZIM.entitlements` |
-| 分享链接 | 只在 DEBUG 下设了 `ZIM_E2E_SHARE_LINKS_BASE` 时才改写 | `Sources/AccountModel.swift:341-345` |
+| 处理入口 | **已接好（L2 核对，11-13）**：`.onOpenURL` 先交给 `LinkRouter`，不是我们的才交回 ShareInbox 和文件；`.onContinueUserActivity(NSUserActivityTypeBrowsingWeb)` 也交给 `LinkRouter`。`LinkRouter` 能打开 task、goal、agent、artifact、circle 和房间（别名、用户是“打不开”；事件链接只打开房间，不跳到消息） | `Sources/ZIMApp.swift:226-229, 253-255`，`Sources/Links/LinkRouter.swift:342-396` |
+| Associated Domains | 没有：只差 entitlements（等 B2、B3） | `ZIM.entitlements` |
+| 分享链接 | 聊天：只在 DEBUG 下设了 `ZIM_E2E_SHARE_LINKS_BASE` 时才改写，`ChatLinkBuilder`（I1a）还没有。Zymi 页面：`LinkRouter.shareURL(for:)` 能生成，但**没有调用方**，页面上没有“拷贝链接” | `Sources/AccountModel.swift:447-448`，`Sources/Links/LinkRouter.swift:251` |
 | ZymiCore 从哪来 | `../zymi-services-wt/timeline/apple/ZymiCore`，不是 main 分支 | `project.yml:22-26` |
 | Zymi 页签里直接调 `NSWorkspace.shared.open` 的地方 | `Sources/Zymi/Timeline/ZymiTimelineHost.swift:102`；`UI/Task/ZymiLiveDesignCards.swift:280, 398, 482, 498, 499, 660, 687, 727, 729, 758`；`UI/Task/ZymiLiveResultCards.swift:255, 500, 512`；`ZymiArtifactsStore.swift:68` | 同左 |
 | Zymi 对象的路由 | `ZymiRoute.task(String)` 等 | `Sources/Zymi/UI/Shell/ZymiNavigator.swift:7-27` |
@@ -124,7 +125,7 @@
 |---|---|---|
 | 定位 | 各平台共用的 Zymi 客户端内核 | `README.md:1-5, 20-27` |
 | 和链接有关的代码 | 卡片动作里的 URL 白名单，以及 `artifact.share` 这类动作 | `crates/zymi-core/src/cards/actions.rs:11-12, 22-50`，`cards/mod.rs:116` |
-| 链接模块 | 没有 | — |
+| 链接模块 | **已有（C1，L1 之后）**：`link_parse`、`link_build`、`link_handoff`、`link_legacy_standard`，跑本仓库向量的拷贝 | `crates/zymi-core/src/links.rs`，`docs/links.md` |
 | 导出自由函数的先例 | `browser_code_input` 这类不依赖 Client 的函数 | `crates/zymi-ffi/src/browser.rs:245-256` |
 | 网关和服务端 | 不在这个仓库 | — |
 
@@ -165,6 +166,7 @@
 
 1. 规范链接是 `https://<本发布线的第一个 host>/<kind>/<id>[/e/<event>]`，**不带 query，也不带片段**。
 2. `kind` 只能是小写的 `u`、`r`、`roomid`、`task`、`goal`、`agent`、`artifact`、`circle`。`invite` 和 `team` 预留，现在不生成。
+   - **L2 提议（待定，见 §4.4 和 §11）：** 新增 `expert`（目录条目，Q-A）、`space`（Zymi Space 应用，Q-S），以及两个页面类 kind `settings` 和 `me`（E3）；`agent` 收窄成只表示本账号的主智能体（Q-A）；`circle` 的 id 指 feed 条目（Q-C）。这些定下来之前，生成器不生成它们，解析器照旧判 `unknown_kind`（老版本 App 提示“请更新”）。定下来以后，先加向量，再改 core（先红后绿）。
 3. Matrix ID 去掉 sigil 再放进路径（`@`、`#`、`!`、`$`），写法照搬 MSC2312。
 4. 编码：把 ID 的 UTF-8 字节逐个处理。`A-Z a-z 0-9 - . _ ~ :` 原样保留，其余字节一律写成 `%XX`（十六进制用大写）。所以 `:` **永远不编码**，`+` 写成 `%2B`，`/` 写成 `%2F`，`@` 写成 `%40`。
    - JS 实现**不能**直接用 `encodeURIComponent`：它会把 `:` 编成 `%3A`，又不会编码 `!'()*`。
@@ -202,6 +204,7 @@
 4. 第一段是 kind，**不解码**，按字面大小写敏感、精确匹配，并且在解码任何 ID **之前**判定：`/bogus/x%zz` 是 `unknown_kind`，`/invite/x%zz` 是 `reserved`，`/%74ask/deck` 是 `unknown_kind`。预留的 kind → `reserved`；不认识的 → `unknown_kind`。
 5. 其余每段**只解码一次**（`%252F` 解出来是字面的 `%2F`，不会再解一次）。`%` 后面不是两位十六进制、解码结果不是合法的 UTF-8（包括过长编码 `%C0%AF`）、或者含控制字符（Unicode Cc，包括 C1 的 U+0080–U+009F），都判 `malformed`。解码之后的 `/` 是 ID 的一部分（Matrix 的别名允许含 `/`；v3 房间的事件 ID 用的是标准 base64）。
 6. 段数：`u` 后面正好 1 段；`r` 和 `roomid` 后面是 1 段，或者 3 段且中间那段是 `e`；Zymi 对象正好 1 段。不对就判 `malformed`。
+   - **L2 提议（E3，待定）：** 页面类 kind `settings` 和 `me` 后面正好 1 段，段的值必须在 §4.4 的固定白名单里，**按字面、大小写敏感、不解码**比较（和 kind 一样）；不在白名单里的判 `unknown_kind`，不判 `malformed`，这样以后加页面时，老版本 App 提示的是“请更新”。返回的形状是 `{kind: settings | me, page}`。
 7. 按类型校验，语法见 §4.1 第 8 条：
    - 用户 ID 和别名在**第一个** `:` 处切开：前面是 localpart（不能为空，Matrix 不允许 localpart 里有 `:`），后面是 server name。路径里的 ID 不带 sigil，解码后以自己的 sigil 开头（`/u/%40x:…` 即 `@@x`）判 `malformed`。
    - 房间 ID 里有 `:` 的，按旧写法 `<opaque>:<server>` 处理；没有 `:` 的必须是 v12 写法 `[A-Za-z0-9_-]+`。
@@ -234,9 +237,24 @@
 | 用户 | `/u/<localpart>:<server>` | 打开资料页；要发私聊得用户再点一次 |
 | 房间、群、空间 | `/roomid/<opaque>[:<server>]`、`/r/<alias>` | 已经加入的直接打开；没加入的先确认（§8.2） |
 | 消息（包括线程里的） | `/roomid/<…>/e/<event>`、`/r/<alias>/e/<event>` | 跳到这条消息，在线程里的就打开线程 |
-| 任务、目标、智能体、产物、圈子 | `/task/<id>` 等 | 只有对象所属的账号能打开（§8.4） |
-| 邀请码、团队 | `/invite/…`、`/team/…` **只预留** | 解析为 `reserved` |
-| 服务端生成的分享链接（比如音乐帖子） | 不归这套语法管 | — |
+| 任务、目标、智能体、产物、圈子 | `/task/<id>` 等 | 只有对象所属的账号能打开（§8.4；跨账号见 B8） |
+| 邀请码、团队 | `/invite/…`、`/team/…` **只预留** | 解析为 `reserved`。`team` 指的是组织团队，**不是**专家目录里的团队（Q-T，待定；默认：专家团队用 `expert` 打开，`/team/` 继续预留） |
+| 服务端生成的分享链接（比如音乐帖子） | 不归这套语法管 | 音乐帖子的 `share_url` 只在 `visibility == public` 时才有，是工作区里找到的唯一一种公开对象（zymi-ios `ZymiModel/Music/MusicDiscoveryModels.swift:161, 195-197, 299-307`；只有模型，没有界面在用）。它用哪个域名、落地页由谁出：Q-M，待定。默认：不用链接域名，由服务端自己的页面出；**如果**用链接域名，就要在 AASA 里给它的路径一个 kind，或者明确排除 |
+
+**L2 盘点（11-13）。** 盘点的依据是 zymi-ios `feat/zymi-chat-session` 和 zim `main`（zymi-ios 只读）。下表列出现有实体之外、iOS 或 Mac 上有、规格还没有的页面，以及现有实体里和代码对不上的地方。**下表的新 kind 都是提议，待定**；定下来之前照 §4.1 第 2 条处理。
+
+| 页面 | 现状（iOS / Mac） | 提议的链接 | 打开时 |
+|---|---|---|---|
+| 智能体：主智能体 vs 专家目录条目 | iOS 有两个路由：`ZAgentRoute.agent`（**不带 id**）和 `.expert(UUID)`；zim 收到 `/agent/<目录 id>` 时只打开专家**列表**（`LinkRouter.swift:372-383`） | `/agent/<id>` 只表示本账号的主智能体；新增 `/expert/<id>`，表示目录条目（Q-A） | `agent`：不是本账号的主智能体 → “打不开”。`expert`：本账号的目录里有它就打开**条目**，没有就“打不开”（目录在服务端是不是全局一样：未知） |
+| 圈子 | core 里没有圈子 id：每个账号只有一份 feed，只有条目和想法带 id（zymi-services `circles/mod.rs:61-62, 160-161`）；zim 不读 id，只打开圈子页（`LinkRouter.swift:393-396`） | `/circle/<feed 条目 id>`（Q-C） | 打开圈子页，滚到这条；条目过期了或者不是本账号的 → 打开圈子页，再提示“打不开这个链接” |
+| Zymi Space 应用 | iOS 有 Space 页签，应用有 `id`、`workspaceId`（`ZymiModel/ZAgentSpaceModels.swift:3-12`），没有分享，也没有公开地址；zim 还没有 Space 界面 | `/space/<workspaceId>`（Q-S） | 只限所属账号 |
+| 设置页（E3） | iOS `ZAgentSettingsRoute` 有 9 个（`Settings/ZAgentSettingsComponents.swift:42-44`）；zim `ZymiSettingsPage`（`UI/Settings/ZymiSettingsWindow.swift:6-7`），没有 `computers` 和 `savedBrowser` | `/settings/<page>`，page 的白名单：`wallet`、`connectors`、`computers`、`credentials`、`savedBrowser`、`channels`、`notifications`、`location`、`appearance` | 永远打开**当前账号自己的**页面，不涉及所有权。本平台没有的页面 → 打开设置首页，再提示“这台设备上没有这个页面”（不算链接无效）。**不能**写成 `<scheme>://wallet` 或 `<scheme>://connectors`：这两个 host 是 OAuth 回调（§5.3） |
+| 智能体的子页面（E3） | iOS：活动记录嵌在任务里（`Tasks/Activity/*`）；zim：`ZymiAgentPage` 有 `activity`、`scheduled`、`memory`（`UI/Agent/ZymiAgentPagesView.swift:6-7`） | `/me/<page>`，page 的白名单：`activity`、`scheduled`、`memory`（用 `me`，不和 `/agent/<id>` 混在一起；Q-A 一起定） | 当前账号自己的页面 |
+| Shop 结账 | iOS `ZAgentShopCheckoutView`；zim `ZymiRoute.checkout`。结账单挂在会话的 checkout id 上（zymi-services `docs/live.md:83`、`docs/cards.md:84`） | **不做链接**：它会触发付款，要从对话里进去 | — |
+| 头像工作室的结果 | 两端都没有分享 | 不做链接；如果结果存成了产物，就用 `/artifact` | — |
+| 带令牌或秘密的东西：电脑接入的安装说明（带一次性 ticket，iOS `ZAgentCodexSetupView.swift:71-89`）、Vault 配对码（iOS `ZAgentVaultIdentityViews.swift:93-99`） | iOS 用文本分享 | **永远不做链接**（§8.3） | — |
+
+**分享入口的现状**（L2 盘点）：iOS 上非聊天的“分享”发的都是**内容**，不是页面链接：消息发正文（`ZAgentMessageActionsModel.swift:25-26`），产物发本地文件（`ZAgentArtifactPreviewSheet.swift:107-111`），专家发“名字 + 简介”纯文本（`ZAgentExpertProfileView.swift:84`），卡片的 `*.share` 动作发卡片里的 text、url 或 file（`AIProductCardClientActionResolver.swift:226-227, 337-356`）。zim 上 Zymi 页面都没有分享入口（作品页的“分享”按钮只在 fixture 里出现，结果页的“分享”没接动作）。两端的聊天都生成 matrix.to 链接。要加的入口见 §9.4 的 Z5 和 §9.5 的 S5。
 
 ### 4.5 测试向量 `fixtures/links/vectors.json`（L1）
 
@@ -254,6 +272,31 @@
 - **现在的参考实现是 zymi-core**（`crates/zymi-core/src/links.rs`，`cargo test -p zymi-core --test links` 跑全部向量、来回和随机输入）；下面这份 node 参考实现只对过最初的 75 条，没有跟着第二轮更新。落地页的 JS 实现以向量为准，向量没写到的情况以本节和 zymi-core 为准。
 - 写第一稿时，我在 scratchpad 里用 node 的 WHATWG `URL` 写了一份参考实现（`/private/tmp/claude-501/-Users-jelf-Projects-work-zim/4c7627bd-ec56-49a6-b260-6b8f3ad252d6/scratchpad/links-ref.mjs`，运行 `node links-ref.mjs <vectors.json>`），75 条全部通过。我故意改错其中两条，检查确实失败了。这份参考实现**不提交**，只用来证明向量本身前后一致；scratchpad 会被清理，C1 的测试才是长期的证明。
 - **改向量要先改这一份，再同步到 zymi-services**（C1）。
+- **L2 要补的向量（第 (2) 步，先在 core 里看红再改绿；这一步不改 `vectors.json`）。** 现有的 Zymi 对象里，https 和 scheme 两种写法只有 task 和 agent 有样例；artifact 只有生成向量 `b-artifact`，没有解析向量；goal 和 circle 两种都没有。要加的是 8 条：解析向量 `p-goal`、`p-goal-scheme`、`p-artifact`、`p-artifact-scheme`、`p-circle`、`p-circle-scheme`，生成向量 `b-goal`、`b-circle`。都用 dev 线：https 写法是 `https://to-dev.zymi.app/<kind>/<id>`，scheme 写法是 `zymi-dev://open/<kind>/<id>`。新 id 已经和 L1 之后的 122 条核对过，没有重复。§4.4 提议的新 kind（`expert`、`space`、`settings`、`me`）等 Q-A、Q-S 和 E3 定下来再补向量。
+
+### 4.6 App 打开期望（`open` 一节，L2）
+
+`link_parse` 和 `link_build` 不知道账号是谁，所以“别的账号的对象”和“没登录”**写不成解析向量**。这两种情况写在这一节，作为 zim 和 zymi-ios 的 **E2E 期望**，不由 core 跑。将来放进 `vectors.json` 的话，单独成一节 `open`，形状如下：
+
+```json
+{"id": "o-goal-https-other-account", "lane": "dev",
+ "given": {"signed_in": true, "object_owner": "other_account"},
+ "input": "https://to-dev.zymi.app/goal/g_other",
+ "expect": {"parse": {"link": {"kind": "goal", "id": "g_other"}, "source": "canonical"},
+            "app": {"notice": "cannot_open"}}}
+```
+
+- `given.signed_in` 是 `false` 时，`expect.app` 写成 `{"held": true, "after_sign_in": {"owner": {"opens": <页面>}, "other_account": {"notice": "cannot_open"}}, "expired": {"dropped": true}}`。
+- E2E 里把 lane 换成 `local`：host 用 `to-local.zymi.test`，scheme 用 `zymi-debug`。
+- 下表是全部 20 条：5 个实体，每个实体有 https 和 scheme 两种写法，每种写法有“别的账号”和“没登录”两种情况。两种写法的期望相同。
+
+| 实体 | 输入（https / scheme） | 别的账号的对象 | 没登录 |
+|---|---|---|---|
+| task | `https://to-dev.zymi.app/task/t_other` / `zymi-dev://open/task/t_other` | `cannot_open`（403 和 404 显示同一句，§8.4），不切换账号 | 先存着（§8.4）；以所属账号登录后打开任务；以别的账号登录 → `cannot_open`；存得太久 → 丢掉 |
+| goal | `…/goal/g_other` | `cannot_open` | 同上，打开的是目标页并选中这个目标 |
+| agent | `…/agent/ag_other` | `cannot_open`：不是本账号的主智能体，本账号的目录里也没有它（Q-A 定了以后，目录条目改走 `expert`） | 同上，打开的是智能体资料 |
+| artifact | `…/artifact/a_other` | `cannot_open` | 同上，打开的是作品页并选中这个作品 |
+| circle | `…/circle/c_other` | **待定（Q-C）**：现在 core 没有圈子 id；按 Q-C 的默认值，打开圈子页并提示“打不开这个链接” | 同上，打开的是圈子页（zim 现在不读 id） |
 
 ---
 
@@ -338,6 +381,8 @@ lane = {
   {"/":"/agent/*"},{"/":"/artifact/*"},{"/":"/circle/*"},{"/":"/invite/*"},{"/":"/team/*"}]}]}}
 ```
 
+- **L2（E7）：** §4.4 提议的 kind 定下来以后，在**第一次上线 AASA 之前**，把 `{"/":"/expert/*"}`、`{"/":"/space/*"}`、`{"/":"/settings/*"}`、`{"/":"/me/*"}` 一次全部加进去（Q-M 如果决定音乐帖子用链接域名，也把它的路径一起加上）。规则：每加一个 kind，AASA、§6.3 的 `pathPrefix` 和落地页的类型名要在同一次改动里一起加。AASA 只列我们的路径（正面清单），首页和其它路径不列。
+
 - **scheme：** 用本发布线的 `callback_scheme`（§5.3 的表：`zymi`、`zymi-dev`、`zymi-testing`），host 是 `open`。**根上的 `.onOpenURL` 只认 host `open`**。外面送进来的 `<scheme>://connectors` 和 `<scheme>://wallet` 一律什么都不做，绝不能当成 OAuth 完成回调；OAuth 回调仍然只从 `ASWebAuthenticationSession` 进来。
 - **入口：** `.onOpenURL` 和 `.onContinueUserActivity(NSUserActivityTypeBrowsingWeb)` 都交给 `LinkRouter`。登录前收到的链接先存起来，登录后再打开。
 
@@ -345,7 +390,7 @@ lane = {
 
 - **发布线（B4）：** 现在只有 dev。Release 注册 `zymi-dev`，Debug 注册 `zymi-debug`，分享扩展用本构建的那一个交接（`zymi-dev://share`、`zymi-debug://share`）。`zim` 和 `zim-debug` 退役，不再注册，也不进旧写法（§12 第三轮）。以后出 prod 构建时用 `zymi`，要单独的 Bundle ID（B3）。
 - **Universal links：** entitlements 里加 `applinks:<host>`（host 来自 B2，appID 来自 B3）。**待在签名构建上确认（Z4）**：macOS 上一般只有 Safari 会走 universal links，所以落地页一定要有“在 ZIM 中打开”按钮；能不能用 Developer ID 分发，取决于描述文件，并入 B3 一起问。
-- **入口：** 在 `ZIMApp.swift:191` 里、ShareInbox 分支之后，加 host `open` 的分支，再加 `.onContinueUserActivity`，都交给 `LinkRouter`。
+- **入口：** 已经接好：`.onOpenURL` 和 `.onContinueUserActivity` 都先交给 `LinkRouter`（`ZIMApp.swift:226-229, 253-255`，L2 核对）。UL 只差 entitlements（Z4）。
 - **生成：** 每个构建都按发布线注入 `ChatLinkBuilder`；Debug 可以用环境变量 `ZIM_E2E_SHARE_LINKS=matrixto` 关掉注入，给 E2E 当对照组用。
 
 ### 6.3 Android（B1 挂起，以下是将来的做法）
@@ -371,7 +416,9 @@ lane = {
 - **浏览器里：** 旧链接的片段不会发到服务端，只能由页面脚本解析，再用 `location.replace` 换到规范链接；只能用解析结果重新拼地址（向量 `lx-protocol-relative` 证明了这一点）。
 - **页面内容：**
   - 品牌标题，加一句“这是一个 ZYMI 的 <类型> 链接”，不显示任何实体详情（§8.3）。
-  - “在 App 中打开”按钮。
+  - **类型名（L2，E8）：** 每个 kind 都要有：用户、房间、消息、任务、目标、智能体、作品、圈子，以及 §4.4 提议的专家、Space 应用、设置页和“我的”子页面（设置页和子页面显示页面名，例如“钱包”）。
+  - **Zymi 对象的提示（L2，E8）：** 加一句“只有创建它的账号能打开”，免得别人点开以为链接坏了（B8 读法一）。没登录的访客也看这一页，并多一句“登录后会自动打开”（App 先存着，§8.4）。
+  - “在 App 中打开”按钮。**macOS 上必须有**：只有 Safari 会把 universal link 交给 App，Chrome 等浏览器只能靠这个按钮（§6.2）。
   - 按平台显示下载入口，商店 ID 见 Q9。
   - 一句提示：“如果 App 没反应，请更新到最新版本”。老版本 App 虽然注册了 scheme，却不会处理这类链接。
   - Smart App Banner（`apple-itunes-app` 加 `app-argument`），需要 B3 提供 App ID。
@@ -416,12 +463,18 @@ lane = {
 - 只能看到实体类型。落地页不请求任何 homeserver 或网关，由 CSP 强制保证。
 - 链接里**不放会话令牌或认证令牌**。邀请码、分享令牌这类能力型令牌，等将来有了后端再单独设计，**而且永远不经 scheme 转交**。v1 只预留 `/invite/` 路径。
 - 服务器日志里会出现路径上的 ID，这是放弃片段的代价，可以接受。
+- **L2（E8）：** 对所有 kind，访客看到的都只有类型，以及页面类 kind 的页面名，见 §6.5。公开对象（比如音乐帖子）要给访客看内容的话，是另一种页面，要等 B8 读法二或 Q-M 定下来再设计，不放进这个落地页。
 
 ### 8.4 打开时的规则
 
 - Zymi 对象：网关返回 403 和 404 时，都显示同一句“打不开这个链接”。
 - Matrix 可选模式下，聊天链接显示“需要先开启聊天”。
 - 多账号时用当前账号打开，不自动切换账号。
+- **L2（E9）：**
+  - 登录前收到的链接先存着，最多存 10 分钟（Q-H，待定；默认值照 zim `LinkRouter.waits = 600`），退出登录或者换账号就清掉；存的时候又来了一条新链接，就换成新的那条。
+  - 登录后，如果登录的不是对象所属的账号 → “打不开这个链接”（`cannot_open`）。
+  - 页面类 kind（`settings`、`me`）永远打开当前账号自己的页面。
+  - 具体期望见 §4.6。
 
 ---
 
@@ -435,6 +488,7 @@ lane = {
 |---|---|---|
 | L0 | 负责人确认或推翻 B2–B5、B7（B1 已定） | 规格头部的默认假设一节随之更新 |
 | L1 | `fixtures/links/vectors.json` | **已完成（本稿）**：75 条，参考实现全部通过，变异对照失败 |
+| L2 | 全页面的链接：盘点和规格（本稿 §4.4 的 L2 盘点、§4.6、B8、§11 的 Q-A 到 Q-H） | 第 (1) 步规格已写；第 (2) 步补 §4.5 列出的向量，在 core 里先看红再改绿，同时同步 zymi-services `fixtures/links/`；新 kind 等 Q-A、Q-S、E3 定下来再做 |
 
 ### 9.1 zymi-services（分支 `feat/links`）
 
@@ -465,7 +519,9 @@ lane = {
 | Z1 | Debug 注册 `zymi-debug`（Release `zymi-dev`）；`.onOpenURL` 加 `open` 分支，交给 `LinkRouter` | 用 `XCUIApplication().open(url)` 打开链接（**这个 API 在 macOS 上能不能用待确认**；不能用就退回 `NSWorkspace.open(_:withApplicationAt:configuration:)`，指定被测的那份 App）。打开 `zymi-debug://open/roomid/<种子 v12 房间>`，中栏显示这个房间；`…/e/<事件>` 跳到消息并高亮；`/task/<id>` 进到任务页；没加入的房间先出确认页；`zymi-debug://open/../x` 显示“打不开这个链接，可能需要更新 App”（`unknown_kind`）；`/u/x:evil.example` 显示“链接无效”。对照：`ShareTests` 照常通过 |
 | Z2 | 正式构建注入 `ChatLinkBuilder`，同时改掉断言 matrix.to 的那几个测试（`MentionTests.swift:62` 不用改） | 复制出来的房间链接和消息链接等于 `build` 向量的格式；把复制出来的链接再用 Z1 的方式打开，能回到原处。对照：设 `ZIM_E2E_SHARE_LINKS=matrixto` 时，链接是 matrix.to |
 | Z3 | `LinkRouter` 接管 §2.3 列出的 15 处和 IMChatMac 的两处 | 打开调试开关，bob 发一条 `https://<dev host>/task/<id>`，alice 点了以后，日志里出现 `link-route task`，**没有** `debug-open` 或 `link-system`；`https://example.com` 出现 `link-system`。zim 的 `rg` 检查（§5.2）通过 |
-| Z4 | entitlements 加 associated domains，加 `.onContinueUserActivity`（被 B2、B3 阻塞） | 只能在 staging 环境的签名构建上验证，本地跑不了 |
+| Z4 | entitlements 加 associated domains（`.onContinueUserActivity` 已经接好，见 §6.2；被 B2、B3 阻塞） | 只能在 staging 环境的签名构建上验证，本地跑不了 |
+| Z5 | （L2）Zymi 页面加“拷贝链接”和“分享…”：任务、目标、智能体资料、作品，定下来以后再加专家、Space 和设置页。都调 `LinkRouter.shareURL(for:)`，它现在没有调用方。聊天链接仍然走 Z2 | 拷贝出来的链接等于 `build` 向量的格式；用 Z1 的方式再打开一遍，能回到原处；按 §4.6 换成 bob 的账号打开，显示“打不开这个链接” |
+| Z6 | （L2，等 Q-A）`/expert/<id>` 打开目录**条目**本身，不是专家列表（现在是 `LinkRouter.swift:378-381`）；`/circle/<条目 id>` 滚到这一条（等 Q-C） | `DeepLinkTests` 里打开种子目录条目，详情页显示它的名字 |
 
 ### 9.5 zymi-ios
 
@@ -476,6 +532,7 @@ lane = {
 | S2 | `ZymiChatMatrix.swift:135` 注入 `ChatLinkBuilder` | 复制出来的链接等于向量的格式 |
 | S3 | `LinkRouter`；盘点 zymi-ios 里所有打开 URL 的地方 | 同 Z3 |
 | S4 | UL 端到端（被 B2、B3 阻塞） | 用 developer 模式加 staging 域名，在真机上测 |
+| S5 | （L2）和 Z5 一样，给页面加链接入口（调 `linkBuild`）。现在“分享”发的是内容（正文、文件、专家的纯文本，见 §4.4 的 L2 盘点）：改成“链接 + 内容”，还是只发链接，等 B8 定了再做 | 同 Z5 |
 
 ### 9.6 挂起（B1）
 
@@ -500,6 +557,7 @@ lane = {
 ## 11. 要负责人回答的问题
 
 **阻塞实现的：**
+- B8（Q7，L2）：选读法一什么都不阻塞；选读法二，Z5、S5 的分享内容，以及 P1、P3、§8.3 都要等服务端的分享令牌或公开标记设计好。排在 B2、B3 和托管之前问。
 - B3：Team ID、Bundle ID、签名指纹，以及 zim 的分发方式（Developer ID 还是 Mac App Store）。被它阻塞的是 P2、Z4、S4 和商店入口。scheme 已定（B3s）。
 - B2、B4、B5：已经有默认值，负责人确认或推翻即可。B1 已定（11-13，只做 Zymi）。
 
@@ -507,7 +565,13 @@ lane = {
 
 | 问题 | 默认值 |
 |---|---|
-| Q7 跨账号分享 | v1 不做 |
+| Q7 跨账号分享 | **待定**，见 B8：读法一（默认）是只有本人跨设备打开，用现有规则；读法二是发给别人看，要服务端分享令牌或公开标记 |
+| Q-A（L2）`agent` 是主智能体还是目录条目 | 待定。默认：拆开，`agent` 只表示本账号的主智能体，新增 `expert` 表示目录条目；子页面用 `me` |
+| Q-C（L2）`circle` 的 id 指什么 | 待定。默认：feed 条目的 id；条目过期或者不是本账号的，打开圈子页，再提示“打不开这个链接” |
+| Q-T（L2）`/team/` 是什么 | 待定。默认：继续预留给组织团队；专家团队用 `expert` 打开 |
+| Q-S（L2）Zymi Space 应用要不要有链接 | 待定。默认：要，`/space/<workspaceId>`，只限所属账号 |
+| Q-M（L2）音乐帖子 `share_url` 用哪个域名 | 待定。默认：不用链接域名，由服务端自己的页面出 |
+| Q-H（L2）登录前收到的链接存多久 | 待定。默认：10 分钟，退出登录或换账号就清掉（照 zim） |
 | Q8 Web 回退 | v1 不做 |
 | Q9 商店 ID | 先用占位 |
 | Q10 pill 写法 | 永远用 matrix.to 写法 |
@@ -593,3 +657,22 @@ lane = {
 | 删掉的 | — | B6、I1b、X1–X3、P4、Q11；§2 里 Unseal 和 ZYMIX 的盘点只作背景；D3 和 §7 只留 matrix.to。前几轮答复里提到它们的地方（F10、S1、S8 等）是历史记录，不再有效 |
 | 向量 | 121 → 122 | 删 11 条：`l-to-share`、`l-zymix-room`、`l-zymix-user`、`lx-zymix-credentials`、`l-matrix-uri-user`、`l-matrix-uri-event`、`l-matrix-uri-alias`、`lx-matrix-uri-zymi`、`lx-matrix-uri-dots`、`lx-matrix-uri-authority`、`lx-matrix-uri-arity`。加 12 条：`not_ours` 的 `x-zymix-unseal`（`zymix://unseal/room/…`）、`x-matrix-uri`（`matrix:u/…`）、`x-to-share-retired`（旧落地页），`x-zymix-open` 照旧；别名加消息 `b-alias-event`、`p-alias-event`、`p-scheme-alias-event`；dev 线 `p-scheme-dev-alias`、`p-scheme-dev-event`；debug 线 `p-scheme-debug-user`、`p-scheme-debug-alias`、`p-scheme-debug-event`、`p-scheme-debug-alias-event` |
 | 语法 | 不变 | §4.2 第 6 条本来就允许 `r` 后面跟 `/e/<event>`，zymi-core 也已经支持；只是 §4.4 的表和向量之前没写 |
+
+### 第五轮：全页面的链接（负责人 11-13，zim L2 第 (1) 步）
+
+负责人原话：「需要做universal link，不止是chat im部分，还有其他的页面分享应该也要考虑」。这一轮只改规格：`vectors.json` 和 zymi-services 里的 `fixtures/links/` 副本都不动，放到第 (2) 步。zymi-ios 只读。
+
+| 编号 | 改了哪一节 | 内容 |
+|---|---|---|
+| E1 | §0.1（新增 B8）、§11（Q7） | 跨账号分享改为待定，写明两种读法各自要什么：读法一用现有规则；读法二要服务端分享令牌或公开标记，并列出对 B2、B5（托管）、落地页和 §8.3 的影响 |
+| E2 | §4.1 第 2 条、§4.4 的 L2 盘点表 | 提议新增 `expert`、`space`，`agent` 收窄成主智能体，`circle` 的 id 指 feed 条目；定下来之前照旧判 `unknown_kind` |
+| E3 | §4.4 的 L2 盘点表 | 提议页面类 kind：`/settings/<page>`（9 个页面的白名单）和 `/me/<page>`（`activity`、`scheduled`、`memory`）；本平台没有的页面怎么处理；Shop 结账、头像结果、带令牌的东西都不做链接；不能用 OAuth 回调的 host |
+| E4 | §4.2 第 6 条 | 页面类 kind 的段数和白名单：按字面比较；不在白名单里的判 `unknown_kind` |
+| E5 | §4.4（“邀请码、团队”一行） | 写明 `/team/` 指组织团队，不是专家团队（Q-T） |
+| E6 | §4.4（“服务端生成的分享链接”一行） | 音乐帖子 `share_url` 只在公开时才有；用哪个域名待定（Q-M），用链接域名时 AASA 怎么处理 |
+| E7 | §6.1 | AASA 要在第一次上线之前一次补全新 kind；AASA、`pathPrefix` 和落地页类型名要同步加 |
+| E8 | §6.5、§8.3 | 落地页要有每个 kind 的类型名、“只有创建它的账号能打开”这句提示、没登录时的说明；macOS 上必须有“在 App 中打开”按钮；公开对象不放进这个落地页 |
+| E9 | §8.4 | 登录前收到的链接存 10 分钟（Q-H）；登录的不是所属账号 → `cannot_open`；页面类 kind 永远打开当前账号自己的页面 |
+| E10 | §4.5、新增 §4.6 | 列出第 (2) 步要补的 8 条向量（已经和 L1 之后的 122 条核对过 id）；§4.6 是 `open` 一节：形状，以及 5 个实体 × 2 种写法 × 2 种情况共 20 条 E2E 期望 |
+| E11 | §2.3、§2.7、§6.2 | 更新过时的事实：zim 的 `onOpenURL` 和 `onContinueUserActivity` 已经交给 `LinkRouter`，只差 entitlements；`shareURL(for:)` 没有调用方；分享链接改写的行号已经移位；zymi-core 已经有 `links.rs` |
+| E12 | §9.0（L2）、§9.4（Z4 改，加 Z5、Z6）、§9.5（加 S5） | 给页面加链接入口；`/expert` 打开目录条目本身，`/circle` 滚到那一条 |
