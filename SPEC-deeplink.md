@@ -19,9 +19,10 @@
 | B1 | 范围 | **v1 只做 ZYMI 的 zim 和 zymi-ios。** Unseal 和 ZYMIX 只保证旧链接还能用。Android 和 Windows（包括工作区里已有的 Unseal 安卓客户端和 Unseal Electron 客户端，见 §2.9）先挂起 | A1、W1、X1–X3。如果把 Unseal 纳入范围，而 Unseal 又开了联邦，§8.2 的服务器检查也要重写 |
 | B2 | 链接域名 | **全部做成配置项**，代码里不写死。示例值：`to.zymi.app`（prod）、`to-dev.zymi.app`、`to-testing.zymi.app` | P2、P3、Z2、S2、Z4、S4 |
 | B3 | 生产环境的 Team ID、Bundle ID、scheme 和签名指纹 | **没有默认值，留空** | 被它阻塞：P2（AASA 和 assetlinks 的内容）、Z4、S4、prod 发布线的 handoff 向量、落地页的商店链接、Smart App Banner |
-| B4 | zim 有几条发布线 | **对外只有 dev 一条**（Release 连 dev 网关）。Debug 构建连本地 E2E 栈，`server_name` 不同（`localhost:8448`），所以它有自己的一份配置：发布线 `local`，scheme `zim-debug`，host 用 `to-local.zymi.test`（只给 E2E 用）。E2E 靠 `zim-debug` 定位到被测的那一份 App；`zim` 照旧留给分享扩展和 Release | Z1、§5.3、§6.2 |
+| B4 | zim 有几条发布线 | **对外只有 dev 一条**（Release 连 dev 网关）。Debug 构建连本地 E2E 栈，`server_name` 不同（`localhost:8448`），所以它有自己的一份配置：发布线 `local`，scheme `zim-debug`，host 用 `to-local.zymi.test`（只给 E2E 用）。E2E 靠 `zim-debug` 定位到被测的那一份 App。每个构建只注册自己那一个 scheme，分享扩展也用它交接（Debug 是 `zim-debug://share`，Release 是 `zim://share`） | Z1、§5.3、§6.2 |
 | B5 | 落地页托管 | **用能跑边缘函数的托管**，例如 Cloudflare Workers 或 Pages Functions（只是举例，不是选定） | P1、P3 |
 | B6 | 去不去掉 ZYMIX 发出的 pill 改写（I1b） | **交给 ZYMIX 的负责人定。** 在他答复之前，I1b 不做 | I1b、X2 |
+| B7 | App 内点到的非自家链接，哪些 scheme 交给系统（**待负责人确认**） | **回复正文里的链接只放行 http 和 https。核心卡片的动作按钮另外放行 `mailto:`、`tel:`、`sms:`、`maps:` 四种**，正好是 zymi-core 卡片动作允许的 scheme（`cards/actions.rs` 的 `ALLOWED_SCHEMES`）。别的 scheme 一律不交给系统，并提示「ZIM 不打开这种链接」 | Z1、Z3、§5.2，zymi-ios 的 S3 |
 
 ### 0.2 五个关键决定
 
@@ -268,7 +269,7 @@
 
 - `LinkRouter.open(url, origin)` 的流程：调 `link_parse`，然后路由到聊天、Zymi 页面或提示。结果是 `not_ours` 时，要看 URL 是从哪来的：
   - **系统送进来的**（`onOpenURL`、`onContinueUserActivity`）：交回原来的处理逻辑（比如 `zim://share?inbox=` 交给 ShareInbox；OAuth 回调只认 `ASWebAuthenticationSession`），没有对应的处理逻辑就丢掉。**绝不交回给系统**，否则 `zim://share` 这类链接会被系统送回 App 本身，形成循环。
-  - **App 内点到的**：按原来的过滤规则（只放行 http 和 https，不能带凭据）交给系统。
+  - **App 内点到的**：按原来的过滤规则（只放行 http 和 https，不能带凭据）交给系统。例外是核心卡片的动作按钮，它另外放行 `mailto:`、`tel:`、`sms:`、`maps:`（B7，待负责人确认）。不放行的不交给系统，提示用户。
 - 系统送来的 URL 和用户在 App 内点到的 URL 都只走这一个入口：
   - 系统送来的：`.onOpenURL` 和 `onContinueUserActivity`；
   - App 内点到的：IMKit 的 `ChatLinkOpener`，以及 App 自己所有打开 http(s) 的地方。
