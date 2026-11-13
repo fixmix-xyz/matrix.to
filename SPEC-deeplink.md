@@ -1,10 +1,10 @@
 # 规格：产品分享链接与深链（SPEC-deeplink）
 
-日期：2026-11-13。状态：**第二稿，已按评审修订**。评审结论是“修改后批准”，原文在 `…/8421319f-…/scratchpad/review-spec-deeplink.md`。逐条答复见文末 §12。
+日期：2026-11-13。状态：**第二稿，已按评审修订**；同日按负责人的决定改为只做 Zymi（§12 第四轮）。评审结论是“修改后批准”，原文在 `…/8421319f-…/scratchpad/review-spec-deeplink.md`。逐条答复见文末 §12。
 
 这份规格只定设计，不写代码。所有“现状”都附了 `文件:行`，行号以 2026-11-13 各仓库的工作区为准；zim、im、zymi-services、zymi-ios 的工作区里有别人没提交的改动，行号可能会小幅偏移。
 
-本稿配套的验收数据是 `fixtures/links/vectors.json`，共 75 条，见 §4.5。
+本稿配套的验收数据是 `fixtures/links/vectors.json`，共 122 条，见 §4.5。
 
 ---
 
@@ -16,13 +16,12 @@
 
 | # | 决定 | 默认值 | 推翻后受影响的任务 |
 |---|---|---|---|
-| B1 | 范围 | **v1 只做 ZYMI 的 zim 和 zymi-ios。** Unseal 和 ZYMIX 只保证旧链接还能用。Android 和 Windows（包括工作区里已有的 Unseal 安卓客户端和 Unseal Electron 客户端，见 §2.9）先挂起 | A1、W1、X1–X3。如果把 Unseal 纳入范围，而 Unseal 又开了联邦，§8.2 的服务器检查也要重写 |
+| B1 | 范围 | **负责人已定（11-13）：只做 Zymi（zim 和 zymi-ios）。** 负责人原话：「这个是新的产品 zymi，只要它的」「Matrix用zymi:」。Unseal 和 ZYMIX 不在范围内，它们的旧写法（旧落地页 `dev.unseal.chat/…/to-share/`、`zymix://unseal/…`、`zymixdemo://unseal/…`）不再支持；Matrix 的用户、房间、别名和消息一律用 zymi 写法（`https://<链接域名>/…` 和 `<scheme>://open/{u\|r\|roomid}/…[/e/…]`，不加新语法），`matrix:` URI 不再读。旧链接只认 matrix.to（D3）。Android 和 Windows 先挂起 | A1、W1 |
 | B2 | 链接域名 | **全部做成配置项**，代码里不写死。示例值：`to.zymi.app`（prod）、`to-dev.zymi.app`、`to-testing.zymi.app` | P2、P3、Z2、S2、Z4、S4 |
 | B3 | 生产环境的 Team ID、Bundle ID 和签名指纹 | **没有默认值，留空** | 被它阻塞：P2（AASA 和 assetlinks 的内容）、Z4、S4、落地页的商店链接、Smart App Banner |
 | B3s | scheme | **负责人已定（11-13）：产品的 scheme 一律是 zymi 家族，不再用 zim。** 规则 `zymi[-<发布线>]`：prod 是 `zymi`，dev 是 `zymi-dev`，testing 是 `zymi-testing`；Debug 构建（连本地栈）是 `zymi-debug`。规范形式 `zymi://open/<路径>`。全表见 §5.3。`zim` 退役，不进旧写法（§12 第三轮）。“dev 线用 `zymi-dev` 而不是 `zymi`”是协调者按这条规则定的，负责人可推翻 | Z1、§5.3、§6.1、§6.2、向量 |
 | B4 | zim 有几条发布线 | **对外只有 dev 一条**（Release 连 dev 网关）。Debug 构建连本地 E2E 栈，`server_name` 不同（`localhost:8448`），所以它有自己的一份配置：发布线 `local`，scheme `zymi-debug`，host 用 `to-local.zymi.test`（只给 E2E 用）。E2E 靠 `zymi-debug` 定位到被测的那一份 App。每个构建只注册自己那一个 scheme，分享扩展也用它交接（Debug 是 `zymi-debug://share`，Release 是 `zymi-dev://share`；scheme 见 B3s） | Z1、§5.3、§6.2 |
 | B5 | 落地页托管 | **用能跑边缘函数的托管**，例如 Cloudflare Workers 或 Pages Functions（只是举例，不是选定） | P1、P3 |
-| B6 | 去不去掉 ZYMIX 发出的 pill 改写（I1b） | **交给 ZYMIX 的负责人定。** 在他答复之前，I1b 不做 | I1b、X2 |
 | B7 | App 内点到的非自家链接，哪些 scheme 交给系统（**待负责人确认**） | **回复正文里的链接只放行 http 和 https。核心卡片的动作按钮另外放行 `mailto:`、`tel:`、`sms:`、`maps:` 四种**，正好是 zymi-core 卡片动作允许的 scheme（`cards/actions.rs` 的 `ALLOWED_SCHEMES`）。别的 scheme 一律不交给系统，并提示「ZIM 不打开这种链接」 | Z1、Z3、§5.2，zymi-ios 的 S3 |
 
 ### 0.2 五个关键决定
@@ -31,9 +30,9 @@
 |---|---|---|
 | D1 | **规范链接放在 URL 路径里，不放在片段（`#/…`）里。** 挂在专用的链接域名上，每条发布线一个，例如 `https://<LINK_HOST>/roomid/<id>`、`/u/<id>`、`/task/<id>`。自定义 scheme 写成 `<scheme>://open/<同一路径>`，只用来从落地页把链接交给 App。 | API 35 以下的 Android 在 App Links 里**匹配不了片段**（片段匹配要到 API 35 的 `uri-relative-filter-group` 才有）。服务端看得到路径，才能用边缘函数返回 404、做预览卡片。聊天消息里只放行 https 链接，自定义 scheme 会被丢掉（`IMChatMac/Message.swift:396-399`）。 |
 | D2 | **语法只有一份，配一份共用的测试向量。** 权威副本是本仓库的 `fixtures/links/vectors.json`。zim 和 zymi-ios 由 **zymi-core** 负责生成和解析链接，做成不依赖登录状态的自由函数。IMKit **不自带语法**，只提供两个注入点：链接生成器和链接打开器。每个 App 只有**一个** `LinkRouter`，所有打开 URL 的地方都先经过它。 | IMKit 和 ZYMIX 都不依赖 zymi-core。“一份向量 + 多份实现”这种做法已有先例：`zymi-services/fixtures/sse-vectors.json` 加 `scripts/sse-parity.sh`。 |
-| D3 | **旧链接都还能用。** 解析器认 `https://matrix.to/#/…`、`https://dev.unseal.chat/AgentMessenger/to-share/#/…`（这两个**旧前缀写成配置里的白名单**，别的 host 上出现同样的片段写法也不认）、`zymix://unseal/…` 和 `matrix:` URI。**@ 提及的 pill 继续用 matrix.to 的片段写法。** 推出顺序是先发解析器，后发生成器。 | 两端判断 pill 的代码都不看域名（`MatrixHTML.swift:119-140`，`MatrixHtml.kt:137-157`）。dev 的 homeserver 关了联邦、注册和访客（`homeserver.yaml.tmpl:34-43`），用 matrix.to 写法没有坏处。 |
+| D3 | **旧链接只认 matrix.to。** 解析器认 `https://matrix.to/#/…`（这个**旧前缀写成配置里的白名单**，别的 host 上出现同样的片段写法也不认），用于 @ 提及的 pill 和已经发出去的链接。旧落地页、`zymix://unseal/…` 和 `matrix:` URI 都不认，判 `not_ours`（B1）。**@ 提及的 pill 继续用 matrix.to 的片段写法。** 推出顺序是先发解析器，后发生成器。 | 两端判断 pill 的代码都不看域名（`MatrixHTML.swift:119-140`，`MatrixHtml.kt:137-157`）。dev 的 homeserver 关了联邦、注册和访客（`homeserver.yaml.tmpl:34-43`），用 matrix.to 写法没有坏处。 |
 | D4 | **安全基线。** 落地页不做预览，也不请求任何 homeserver。`client` 和 `web-instance[…]` 两个参数一律忽略。落地页只跳到自己拼出来的地址。会改状态的动作一律先在 App 内确认。服务器名检查只用在**用户 ID、别名和 v12 之前的房间 ID** 上；房间和事件是不是自家的，看链接的 host 属于哪条发布线。没有权限和不存在对外显示同一句话。链接里不放任何令牌，v1 只预留 `/invite/` 路径，不实现。 | matrix.to 会按 `via` 去请求任意服务器拉预览（`src/preview/PreviewViewModel.js:46-59`）。ZYMIX 打开链接就直接加入房间（`../matrix.to/src/open/clients/Zymix.js:17-19`）。v12 的房间 ID 和 v3 之后的事件 ID 都没有服务器部分。 |
-| D5 | **各平台做法。** iOS 和 macOS 用 universal links（AASA 按路径匹配）加 scheme；安卓用 App Links（`assetlinks.json` 加 `autoVerify`）加 scheme；Windows 先注册 scheme，用 Electron 的话就是单实例转发；这几条都要等 B1。App 里点到自家链接，**由 `LinkRouter` 拦下来**，不交给系统。 | 现在 IMKit 和 zim 一共有十几个地方会把 https 链接直接交给系统（§5.2）。 |
+| D5 | **各平台做法。** iOS 和 macOS 用 universal links（AASA 按路径匹配）加 scheme；安卓用 App Links（`assetlinks.json` 加 `autoVerify`）加 scheme；Windows 先注册 scheme，用 Electron 的话就是单实例转发；安卓和 Windows 按 B1 挂起。App 里点到自家链接，**由 `LinkRouter` 拦下来**，不交给系统。 | 现在 IMKit 和 zim 一共有十几个地方会把 https 链接直接交给系统（§5.2）。 |
 
 ---
 
@@ -47,6 +46,8 @@
 ---
 
 ## 2. 现状盘点
+
+> **本节只作背景。** 这里记的是 2026-11-13 之前各仓库的现状，其中 Unseal 和 ZYMIX 的部分（落地页的 Unseal、ZYMIX 客户端，zymix-im-ios、zymix-im-android-cloud，Unseal 品牌客户端）不再是要支持的对象：B1 定了只做 Zymi，它们的写法一律判 `not_ours`（§4.2、§7）。
 
 ### 2.1 落地页（matrix.to 的两个 fork）
 
@@ -195,8 +196,7 @@
      别的发布线的链接不论路径（包括首页）、带不带凭据，都是 `other_lane`，都不打开。`https://to.zymi.app@evil.example/` 的 host 是 `evil.example`；形近字 host 转成 punycode 后是别的 host；这些都不是我们的。
    - `https`，默认端口，并且去掉 query 和片段以后**整串等于**某个旧前缀（配置项 `legacy.fragment_bases`）→ 先看片段：没有 `#/` 的话是网站本身 → `not_ours`（带不带凭据都一样，`https://u@matrix.to/` 也是）；有 `#/` 时带用户名或密码判 `malformed`，否则按旧片段解析。旧前缀换了端口是另一个 origin → `not_ours`。
    - 本构建配置里列出的任意一个 scheme，加 host `open`（大小写不敏感）→ 带用户名、密码或端口判 `malformed`；否则按规范路径解析；路径为空（`<scheme>://open`）判为 `malformed`；host 是别的（`share`、`connectors`、`wallet`）或者没有 host（`zymi:open/…`，少了 `//`）→ `not_ours`。scheme 不区分大小写（`ZYMI://` 就是 `zymi://`）。别的发布线的 scheme（配置项 `other_lanes` 里各线的 `schemes`）→ `other_lane`，带上那条线的名字；不管 host 和路径（`open`、`share`、没有 `//` 的都算）、带不带凭据，和别的发布线的 https host 一样，都不打开。哪条线都没列出的 scheme → `not_ours`，哪怕名字像 `zymi-staging`：解析器只按配置认 scheme，不按命名规则猜。
-   - `matrix:` → 按 MSC2312 解析，**只认 `u`、`r`、`roomid`**；其他 kind（包括 Zymi 对象）判为 `unknown_kind`。`matrix:` 的路径不折叠点段，`..` 会走到 ID 语法里被拒；它没有 authority，`matrix://host/…` 第一段为空 → `malformed`；段数规则同第 6 条（用户后面不能跟事件）。
-   - 旧 scheme（配置项 `legacy.schemes`：`zymix`、`zymixdemo` 的 host 都是 `unseal`）→ 带用户名、密码或端口判 `malformed`；否则按旧 ZYMIX 写法解析。
+   - `matrix:` URI（MSC2312）、`zymix://`、`zymixdemo://`（包括旧的 `zymix://unseal/…`）都不读，和别的任何 scheme 一样 → `not_ours`（B1，负责人 11-13）。**iOS 和 Mac 都一样：旧的 `zymix://` 和 `matrix:` 链接一律当成 `not_ours`**，按 §5.2 的规则处理，不当成我们的、也不判 `malformed`。
    - 其他任何情况 → `not_ours`。
 3. 路径：允许结尾有**一个**斜杠；**先按字面上的 `/` 切段**，出现空段就判 `malformed`（这样 `//evil` 永远不会变成协议相对地址）。
 4. 第一段是 kind，**不解码**，按字面大小写敏感、精确匹配，并且在解码任何 ID **之前**判定：`/bogus/x%zz` 是 `unknown_kind`，`/invite/x%zz` 是 `reserved`，`/%74ask/deck` 是 `unknown_kind`。预留的 kind → `reserved`；不认识的 → `unknown_kind`。
@@ -212,8 +212,6 @@
 
 旧片段写法：片段必须以 `#/` 开头；去掉 `?` 后面的部分；以 `user/` 开头的（`#/user/@…`，IMKit 的 mention pill 也认这种写法，`MatrixHTML.mentionedUser`）去掉 `user/` 后必须正好是一个 `@` 用户 ID；其余的按 `/` 最多切成 2 段（标识符，可选再跟一个 `$事件`），出现空段就判 `malformed`；每段解码一次，再看 sigil：`@` 是用户，`#` 是别名，`!` 是房间，`+` 是社群 → `unknown_kind`。ID 语法和 §4.1 第 8 条一样（`$..` 判 `malformed`）。
 
-旧 ZYMIX 写法：`/room/<带 sigil 的 ID>` 或 `/user/<@ID>`，ID 解码一次；没有 sigil 就判 `malformed`。
-
 ### 4.3 解析结果
 
 | 结果 | 含义 | App 的处理 |
@@ -223,7 +221,7 @@
 | `{other_lane: <名字>}` | 是我们另一条发布线的链接 | 提示“这是 <名字> 环境的链接”，不打开 |
 | `{not_ours: true}` | 不是我们的链接 | 按原来的规则处理，比如交给系统浏览器 |
 
-`link` 的类型叫 **`DeepLink`**（不叫 `Link`：SwiftUI 已经有 `Link` 和 `ShareLink`）。向量里的形状：`{kind: user, user_id}`、`{kind: room, room_id | room_alias, event_id?}`、`{kind: task | goal | agent | artifact | circle, id}`；zymi-core、Swift 和 TypeScript 里房间分成两种：`room {room_id, event_id?}` 和 `roomAlias {room_alias, event_id?}`，不会出现两个都有或都没有的值。`source` 取值有 `canonical`、`scheme`、`matrix_to`、`matrix_uri`、`zymix` 五种，用于统计和排查。
+`link` 的类型叫 **`DeepLink`**（不叫 `Link`：SwiftUI 已经有 `Link` 和 `ShareLink`）。向量里的形状：`{kind: user, user_id}`、`{kind: room, room_id | room_alias, event_id?}`、`{kind: task | goal | agent | artifact | circle, id}`；zymi-core、Swift 和 TypeScript 里房间分成两种：`room {room_id, event_id?}` 和 `roomAlias {room_alias, event_id?}`，不会出现两个都有或都没有的值。`source` 取值有 `canonical`、`scheme`、`matrix_to` 三种，用于统计和排查（`matrix_uri` 和 `zymix` 随 B1 删掉）。
 
 生成的结果是 url，或者错误之一：`invalid_id`（ID 不符合 §4.1）、`foreign_server`（§4.1 第 6 条）、`no_scheme`（这个平台没配 scheme，只有 handoff 会报）。
 
@@ -235,22 +233,23 @@
 |---|---|---|
 | 用户 | `/u/<localpart>:<server>` | 打开资料页；要发私聊得用户再点一次 |
 | 房间、群、空间 | `/roomid/<opaque>[:<server>]`、`/r/<alias>` | 已经加入的直接打开；没加入的先确认（§8.2） |
-| 消息（包括线程里的） | `/roomid/<…>/e/<event>` | 跳到这条消息，在线程里的就打开线程 |
+| 消息（包括线程里的） | `/roomid/<…>/e/<event>`、`/r/<alias>/e/<event>` | 跳到这条消息，在线程里的就打开线程 |
 | 任务、目标、智能体、产物、圈子 | `/task/<id>` 等 | 只有对象所属的账号能打开（§8.4） |
 | 邀请码、团队 | `/invite/…`、`/team/…` **只预留** | 解析为 `reserved` |
 | 服务端生成的分享链接（比如音乐帖子） | 不归这套语法管 | — |
 
 ### 4.5 测试向量 `fixtures/links/vectors.json`（L1）
 
-- 共 121 条：生成 16 条，解析 105 条。解析的 105 条里，规范写法和 scheme 写法（`p-`）22 条，应当拒绝、判为“不是我们的”或别的发布线的（`x-`）56 条，旧写法（`l-`）13 条，旧写法里应当拒绝的（`lx-`）14 条。每条都附一句说明。
+- 共 122 条：生成 17 条，解析 105 条。解析的 105 条里，规范写法和 scheme 写法（`p-`）30 条，应当拒绝、判为“不是我们的”或别的发布线的（`x-`）59 条，旧写法（`l-`，只剩 matrix.to）7 条，旧写法里应当拒绝的（`lx-`）9 条。每条都附一句说明。
 - 第一版 75 条；C1 安全评审第二轮补了 37 条（把 C1 实现时自己定的规则写回本规格和向量，再加上 ID 语法收紧、长度上限、凭据、`#/user/` 写法），见 §12 第二轮。
 - 用了三份**测试用的、按构建划分**的配置，不代表真实部署：`prod`（iOS 和 macOS 的 scheme 是 `zymi`）；`dev`（`server_name` 假定和 prod 一样是 `zymi.app`，未确认，见评审 U6；iOS 和 macOS 的 scheme 都是 `zymi-dev`）；`local`（zim Debug 连本地 E2E 栈，`localhost:8448`，`zymi-debug`）。scheme 按 §5.3 的表。解析器接受配置里列出的每一个 scheme。
 - 覆盖到的情况：
-  - v12 和旧写法两种房间 ID；带端口的 server name（含端口不一致）；非默认端口；`<scheme>://open` 空路径；别的构建的 scheme；`matrix:` 下的 Zymi kind；标准 base64 的事件 ID；UTF-8 别名；含 `/` 的别名。
+  - v12 和旧写法两种房间 ID；带端口的 server name（含端口不一致）；非默认端口；`<scheme>://open` 空路径；别的构建的 scheme；标准 base64 的事件 ID；UTF-8 别名；含 `/` 的别名。
   - 编码过的 `:`；点段和 `%2e%2e`；反斜杠；空段；大写的 kind；结尾斜杠；host 的大小写和默认端口。
   - 跨发布线的链接；凭据；`http`；`share` 和 `connectors` 这两个 host；`#//evil.example/`；陌生 host 上的旧片段；`web-instance` 和 `client` 两个参数。
-  - 第二轮：kind 先于解码、kind 段不解码；只解码一次；C1 控制字符和非法 UTF-8；重复 sigil、bidi 控制符、房间 opaque 里的 `/`、事件 ID 的 `/../` 和 `..`；server 名转小写；形近字 host 和 `host@evil`；别的发布线的首页和凭据；超长输入（我们的、别人的、自家首页）；scheme 写法和旧写法上的凭据、端口、空段；`matrix:` 的点段、authority 和段数；`#/user/@…`。
+  - 第二轮：kind 先于解码、kind 段不解码；只解码一次；C1 控制字符和非法 UTF-8；重复 sigil、bidi 控制符、房间 opaque 里的 `/`、事件 ID 的 `/../` 和 `..`；server 名转小写；形近字 host 和 `host@evil`；别的发布线的首页和凭据；超长输入（我们的、别人的、自家首页）；scheme 写法和旧写法上的凭据、端口、空段；`#/user/@…`。（这一轮的 `matrix:` 和 `zymix://unseal` 向量在第四轮删掉。）
   - 第三轮（scheme 改成 zymi 家族）：所有 scheme 向量换成 `zymi`、`zymi-dev`、`zymi-debug`，prod 有了 handoff；新增 `ZYMI://` 大小写、`zymi:open/…`（没有 `//`）、退役的 `zim://open/…`、另一个产品的 `zymix://open/…`；别的发布线的 scheme 判 `other_lane`（`open`、`share`、大小写），没有哪条线列出的 `zymi-staging` 判 `not_ours`。
+  - 第四轮（只做 Zymi，B1）：删掉旧落地页、`zymix://unseal/…` 和 `matrix:` URI 的 11 条；它们现在都是 `not_ours`（`x-to-share-retired`、`x-zymix-unseal`、`x-matrix-uri`，`x-zymix-open` 照旧）；zymi 写法补齐用户、房间 ID、别名和消息：别名加消息（`b-alias-event`、`p-alias-event`、`p-scheme-alias-event`），dev 和 debug 线的 `r` 和 `e`（`p-scheme-dev-*`、`p-scheme-debug-*`）。见 §12 第四轮。
 - 每个实现的测试都要做两件事：跑完全部向量；把每条生成出来的 url 和 handoff 再解析一遍，结果必须和原来的 link 相同（来回）。
 - **现在的参考实现是 zymi-core**（`crates/zymi-core/src/links.rs`，`cargo test -p zymi-core --test links` 跑全部向量、来回和随机输入）；下面这份 node 参考实现只对过最初的 75 条，没有跟着第二轮更新。落地页的 JS 实现以向量为准，向量没写到的情况以本节和 zymi-core 为准。
 - 写第一稿时，我在 scratchpad 里用 node 的 WHATWG `URL` 写了一份参考实现（`/private/tmp/claude-501/-Users-jelf-Projects-work-zim/4c7627bd-ec56-49a6-b260-6b8f3ad252d6/scratchpad/links-ref.mjs`，运行 `node links-ref.mjs <vectors.json>`），75 条全部通过。我故意改错其中两条，检查确实失败了。这份参考实现**不提交**，只用来证明向量本身前后一致；scratchpad 会被清理，C1 的测试才是长期的证明。
@@ -288,19 +287,18 @@
 lane = {
   name, hosts: [...], server_name,                 // hosts[0] 用来生成；host 可以写成 host:port
   schemes: { ios?, macos?, android?, windows? },   // 生成 handoff 用；解析时接受这里列出的每一个
-  legacy: { fragment_bases: [...], schemes: { zymix: "unseal", zymixdemo: "unseal" } },
+  legacy: { fragment_bases: ["https://matrix.to/"] },
   other_lanes: [{ name, hosts: [...], schemes: [...] }]   // schemes 可省略（默认空），省略时那条线的 scheme 链接判 not_ours
 }
 ```
 
-- **列表都是必填**，没有默认值：少传一个 `legacy`，所有 `matrix.to` 写法的 mention pill 都会判成 `not_ours` 交给系统浏览器，而且没有任何报错。`legacy` 由 zymi-core 统一提供（`link_legacy_standard()`：`https://matrix.to/`、`https://dev.unseal.chat/AgentMessenger/to-share/`、`zymix` 和 `zymixdemo` 的 `unseal`），各端直接取用，不自己抄一份。TS 端的配置对象多了 `.d.ts` 里没有的字段也抛错。
+- **列表都是必填**，没有默认值：少传一个 `legacy`，所有 `matrix.to` 写法的 mention pill 都会判成 `not_ours` 交给系统浏览器，而且没有任何报错。`legacy` 由 zymi-core 统一提供（`link_legacy_standard()`：只有 `https://matrix.to/`），各端直接取用，不自己抄一份。TS 端的配置对象多了 `.d.ts` 里没有的字段也抛错。
 - **配置校验**：每个函数先校验配置，通不过就抛错（§4.3）：
   - `hosts` 不能为空；每个 host 必须是 WHATWG URL 序列化后的写法（小写、punycode、不带默认端口、不带路径和凭据）；同一个 host 不能出现两次，也不能同时属于两条发布线。
   - 别的发布线名字不能为空、不能重复；别的发布线的 scheme 和平台 scheme 的要求一样，不能是本构建的 scheme，也不能同时属于两条线。
   - `server_name` 是小写的合法 server name。
-  - 平台 scheme 是 `[a-z][a-z0-9+.-]*`，不能是 `http`、`https`、`matrix`、`javascript`、`data`、`file`、`blob`、`about`、`ws`、`wss`、`ftp`，也不能是旧 scheme。
+  - 平台 scheme 是 `[a-z][a-z0-9+.-]*`，不能是 `http`、`https`、`matrix`、`javascript`、`data`、`file`、`blob`、`about`、`ws`、`wss`、`ftp`。
   - 旧前缀是序列化后的 `https` URL（带路径，不带凭据、query 和片段），不能在任何发布线的 host 上。
-  - 旧 scheme 不能是上面那些保留 scheme 或平台 scheme，host 是小写的 `[a-z0-9.-]+`。
 
 - **scheme 表（负责人已定，11-13，B3s）。** 规则：产品的 scheme 是 `zymi`，非 prod 的发布线加 `-<发布线名>`，Debug 构建（连本地栈，发布线 `local`）用 `zymi-debug`。同一台设备上装多条线时各认各的，不会抢。每个构建**只注册自己那一个**，`schemes` 里每个平台填同一个值。这张表就是各端配置里的一行，代码里不写死 scheme：
 
@@ -311,7 +309,7 @@ lane = {
   | testing | `zymi-testing` | `zymi-testing` | `zymi-testing` | `zymi-testing` | zymi-ios 有 testing 线，`callback_scheme` 还没配 |
   | local（Debug） | — | `zymi-debug` | — | — | zim Debug，从 `zim-debug` 改成它；只给 E2E 用 |
 
-  Android 和 Windows 两列等 B1，接入时照这张表取名。`zymix`、`zymixdemo`、`siuper` 是 ZYMIX 的，`unseal` 是 Unseal 的，都不是本产品的 scheme（`zymix`、`zymixdemo` 只作为旧写法读 `unseal` 这个 host）。
+  Android 和 Windows 两列等 B1，接入时照这张表取名。`zymix`、`zymixdemo`、`siuper` 是 ZYMIX 的，`unseal` 是 Unseal 的，都不是本产品的 scheme，也不作为旧写法读：一律 `not_ours`（B1）。
 - **一个 scheme，按 host 分用途。** iOS 的 OAuth 回调和深链**共用**这一个 scheme（zymi-ios 的 `callback_scheme` 就是它），macOS 也一样。host 各管各的，互不冲突：
 
   | host | 用途 | 谁处理 | 依据 |
@@ -387,10 +385,9 @@ lane = {
 | 旧链接 | 在 App 里点到 | 系统级打开 | 在浏览器里打开 |
 |---|---|---|---|
 | `https://matrix.to/#/…` | `LinkRouter` 认 | 我们没法声明这个域名的归属 | 由 matrix.org 的页面处理，我们管不了 |
-| `https://dev.unseal.chat/AgentMessenger/to-share/#/…` | `LinkRouter` 认 | — | 默认（Q11）：在 unseal-webapp 的 `res/to-share/` 里加一小段跳转脚本（P4） |
-| `zymix://unseal/…` | 只有 ZYMIX 会收到；我们的解析器也认（比如用户粘贴进来的） | — | — |
-| `matrix:` | `LinkRouter` 认 | 不注册 `matrix` scheme | — |
-| 已经发出去的 pill | 继续能用 | — | — |
+| 已经发出去的 pill（matrix.to 写法） | 继续能用 | — | — |
+
+只有 matrix.to 一种旧写法。旧落地页 `https://dev.unseal.chat/AgentMessenger/to-share/#/…`、ZYMIX 的 `zymix://unseal/…`、`zymixdemo://unseal/…` 和 `matrix:` URI 不再读（B1）：iOS 和 Mac 都当成 `not_ours`，按 §5.2 的规则处理（App 内点到的，非 http(s) 不交给系统；系统送进来的，交回原来的处理逻辑或丢掉）。
 
 **推出顺序：**
 1. 先上线解析器和 `LinkRouter`：C1、C2、I1a、I2、Z1、Z3、S0、S1、S3。
@@ -411,7 +408,7 @@ lane = {
 ### 8.2 冒充和劫持
 
 - **scheme 谁都能注册。** scheme 链接里不放令牌；加入房间、发起私聊、接受邀请这类会改状态的动作，都要先在 App 内确认。确认页显示的是登录后从自家服务器取来的房间名和成员数，而不是消息里的链接文字。
-- **服务器名检查只用在用户 ID、别名和 v12 之前的房间 ID 上**（不开联邦；如果 B1 把开了联邦的 Unseal 纳入范围，这一条要重写）。v12 的房间 ID 和房间 v3 起的事件 ID 都没有服务器部分（v1、v2 的 `$opaque:server` 有，但不检查）：规范链接和 scheme 链接里的，归 host 或 scheme 所在的发布线；旧链接里的，按当前发布线去打开，自家服务器说找不到就显示“打不开”。`via` 一律不参与解析。
+- **服务器名检查只用在用户 ID、别名和 v12 之前的房间 ID 上**（不开联邦；B1 定了只做 Zymi）。v12 的房间 ID 和房间 v3 起的事件 ID 都没有服务器部分（v1、v2 的 `$opaque:server` 有，但不检查）：规范链接和 scheme 链接里的，归 host 或 scheme 所在的发布线；旧链接里的，按当前发布线去打开，自家服务器说找不到就显示“打不开”。`via` 一律不参与解析。
 - **用独立的域名。** 不能和 ZYMIX 共用（理由见 §3）。
 
 ### 8.3 没登录的访客能看到什么
@@ -436,7 +433,7 @@ lane = {
 
 | ID | 任务 | 状态和证明 |
 |---|---|---|
-| L0 | 负责人确认或推翻 B1–B6 | 规格头部的默认假设一节随之更新 |
+| L0 | 负责人确认或推翻 B2–B5、B7（B1 已定） | 规格头部的默认假设一节随之更新 |
 | L1 | `fixtures/links/vectors.json` | **已完成（本稿）**：75 条，参考实现全部通过，变异对照失败 |
 
 ### 9.1 zymi-services（分支 `feat/links`）
@@ -453,14 +450,12 @@ lane = {
 | P1 | 用精简的新页面加边缘函数替换现有页面（§6.5），保留 Apache-2.0 的版权声明 | 用 Playwright 加本地的边缘函数运行环境，跑每一条向量 URL：状态码对、显示的类型对、“打开”按钮的 href 等于各平台 UA 下期望的 handoff；除了同源的静态文件，没有任何别的请求。变异对照：把解析器改成接受空段，`lx-protocol-relative` 必须失败。产物放在 `artifacts/landing/<ts>/` |
 | P2 | 按发布线生成 `.well-known`（**被 B3 阻塞**） | 本地检查格式；上线后检查 200、`application/json`、没有重定向；用 Apple CDN 的接口和 Google 的 `statements:list` 接口查到 |
 | P3 | 部署和响应头（被 B2、B5 阻塞） | 用 `curl` 存下响应头；检查 `/task/a%2Fb` 返回 404，并且确实到了函数里，没被托管先拦掉；`/r/a%2Fb:zymi.app` 返回 200 |
-| P4 | 旧落地页加跳转，改 unseal-webapp 的 `res/to-share/`（Q11） | 用 Playwright 打开 §7 里的旧链接，最后停在规范链接上；`#//evil.example/` 停在“链接无效” |
 
 ### 9.3 im（IMKit）
 
 | ID | 任务 | 怎么证明 |
 |---|---|---|
 | I1a | 加 `ChatLinkBuilder` 和 `ChatLinkOpener` 两个注入点；`MatrixShareLinks` 作为内置实现，**默认行为完全不变**；`SpaceHome.swift:342-344` 改成走 builder | ZYMIX 不用改代码；zim 的 `MessageShareTests` 和 `SpaceSettingsTests` 在不注入的对照下行为照旧 |
-| I1b | 去掉 pill 改写（`MatrixOutgoingHTML.swift:21-31`）。**归 ZYMIX 负责人（B6）**，和 X2 一起排期 | ZYMIX 的 E2E 确认发出的 pill 是 matrix.to 写法 |
 | I2 | IMKit 里所有交给系统的地方都先调 `ChatLinkOpener`：iOS 的 `MessageRowView`、`HostMessageHooks`、`RoomInfoView`；Mac 的 `Message.swift` 和 `NativeMessageCell` | 不单独测，由 Z3 和 S3 证明（理由见 §12） |
 
 ### 9.4 zim
@@ -482,18 +477,15 @@ lane = {
 | S3 | `LinkRouter`；盘点 zymi-ios 里所有打开 URL 的地方 | 同 Z3 |
 | S4 | UL 端到端（被 B2、B3 阻塞） | 用 developer 模式加 staging 域名，在真机上测 |
 
-### 9.6 挂起或交给别人（B1、B6）
+### 9.6 挂起（B1）
 
 | ID | 仓库 | 任务 |
 |---|---|---|
 | A1 | im-android | 加 `ChatLinkBuilder` 和 `ChatLinkOpener` 注入点。对照组：不注入时，链接以 `https://matrix.to/#/` 开头。`Phase25Test.kt:64` 当不了对照，因为它断言的是 `contains("matrix.to") || contains(roomId)` |
 | W1 | Windows | 见 §6.4 |
-| X1 | `../matrix.to` | 从 `Zymix.js:38-46` 删掉还没核实支持的平台：Android 一定删，Windows、macOS、Linux 先核实 ZYMIX PC 端再说 |
-| X2 | zymix-im-ios | 加入房间前先确认；配合 I1b |
-| X3 | zymix-im-android-cloud | 加 Unseal 路由，或者接本规格的语法 |
 | B-ops | 运维 | DNS 和 TLS；`zymi.app/.well-known/matrix/client` |
 
-**建议顺序：** L1（已完成）→ C1 → C2 → I1a、I2 → Z1、Z3、S0、S1、S3 → P1–P3 → Z4、S4 → Z2、S2 → P4、I1b、X1–X3。
+**建议顺序：** L1（已完成）→ C1 → C2 → I1a、I2 → Z1、Z3、S0、S1、S3 → P1–P3 → Z4、S4 → Z2、S2。
 
 ---
 
@@ -509,8 +501,7 @@ lane = {
 
 **阻塞实现的：**
 - B3：Team ID、Bundle ID、签名指纹，以及 zim 的分发方式（Developer ID 还是 Mac App Store）。被它阻塞的是 P2、Z4、S4 和商店入口。scheme 已定（B3s）。
-- B1、B2、B4、B5：已经有默认值，负责人确认或推翻即可。
-- B6：交给 ZYMIX 的负责人。
+- B2、B4、B5：已经有默认值，负责人确认或推翻即可。B1 已定（11-13，只做 Zymi）。
 
 **不阻塞、按默认值走的：**
 
@@ -520,7 +511,6 @@ lane = {
 | Q8 Web 回退 | v1 不做 |
 | Q9 商店 ID | 先用占位 |
 | Q10 pill 写法 | 永远用 matrix.to 写法 |
-| Q11 旧落地页 | 保留，加跳转（P4） |
 | Q12 落地页仓库 | 用本仓库 |
 | 生产环境的 homeserver | 是否和 dev 模板一样关了联邦和访客、资料接口要不要登录才能读，需要核对 |
 
@@ -591,3 +581,15 @@ lane = {
 
 各端要跟着改的：zim（`project.yml` 的 `ZIM_LINK_SCHEME`：Release `zymi-dev`、Debug `zymi-debug`，App 和分享扩展都要改；Info.plist 的 `ZimLinkScheme` 和 lane 配置里的 `schemes.macos`；UITests 里的 `zim-debug://`；回调 scheme 改为取本构建的 scheme，见 §5.3）；zymi-ios（`callback_scheme` 照表配置，testing 线 `zymi-testing`，prod `zymi`；`.onOpenURL` 只认 `open`）；Android 和 Windows 将来接入时照 §5.3 的表取名。
 
+### 第四轮：只做 Zymi（负责人 11-13，zim L1）
+
+负责人原话：「这个是新的产品 zymi，只要它的」「Matrix用zymi:」。
+
+| 项 | 处理 | 说明 |
+|---|---|---|
+| B1 | 已定 | 只做 Zymi。Unseal 和 ZYMIX 的旧写法不再支持；Matrix 实体用现有的 zymi 写法（选项 A：`zymi[-<发布线>]://open/{u\|r\|roomid}/…[/e/…]`，不加新语法） |
+| 旧写法 | 只剩 matrix.to | 删掉旧落地页前缀 `https://dev.unseal.chat/AgentMessenger/to-share/` 和 `legacy.schemes`（`zymix`、`zymixdemo` 的 `unseal`）；`link_legacy_standard()` 只剩 `https://matrix.to/`（mention pill 和已经发出去的链接）。配置里的 `legacy.schemes` 这一项整个删掉 |
+| `matrix:` URI | 不再读 | 删掉 `matrix:` 的解析和 `source` 的 `matrix_uri`；`zymix` 这个 `source` 也删掉。`matrix` 仍是保留 scheme，配置不能用它当平台 scheme |
+| 删掉的 | — | B6、I1b、X1–X3、P4、Q11；§2 里 Unseal 和 ZYMIX 的盘点只作背景；D3 和 §7 只留 matrix.to。前几轮答复里提到它们的地方（F10、S1、S8 等）是历史记录，不再有效 |
+| 向量 | 121 → 122 | 删 11 条：`l-to-share`、`l-zymix-room`、`l-zymix-user`、`lx-zymix-credentials`、`l-matrix-uri-user`、`l-matrix-uri-event`、`l-matrix-uri-alias`、`lx-matrix-uri-zymi`、`lx-matrix-uri-dots`、`lx-matrix-uri-authority`、`lx-matrix-uri-arity`。加 12 条：`not_ours` 的 `x-zymix-unseal`（`zymix://unseal/room/…`）、`x-matrix-uri`（`matrix:u/…`）、`x-to-share-retired`（旧落地页），`x-zymix-open` 照旧；别名加消息 `b-alias-event`、`p-alias-event`、`p-scheme-alias-event`；dev 线 `p-scheme-dev-alias`、`p-scheme-dev-event`；debug 线 `p-scheme-debug-user`、`p-scheme-debug-alias`、`p-scheme-debug-event`、`p-scheme-debug-alias-event` |
+| 语法 | 不变 | §4.2 第 6 条本来就允许 `r` 后面跟 `/e/<event>`，zymi-core 也已经支持；只是 §4.4 的表和向量之前没写 |
