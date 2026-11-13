@@ -90,8 +90,10 @@ function get(rawPath) {
     });
 }
 
+// The lane's own Matrix server name: user IDs and aliases on it are this lane's (config/lanes/<lane>.json).
+const S = site.config.links.server_name;
 const httpCases = [
-    ["/task/deck", 200], ["/task/a%2Fb", 404], ["/r/a%2Fb:zymi.app", 200], ["/invite/ABC123", 404], ["/U/x:zymi.app", 404],
+    ["/task/deck", 200], ["/task/a%2Fb", 404], [`/r/a%2Fb:${S}`, 200], ["/invite/ABC123", 404], [`/U/x:${S}`, 404],
     ["/u/x:evil.example", 404], ["/roomid/owtPMO14G1v6Yl9KlRjjDmlKdVC5NbSUPqbiF2Fru30/e/Lh9m3k_ZqXo", 200], ["/", 200],
     ["/settings/%E5%AE%98%E6%96%B9%E5%AE%A2%E6%9C%8D", 404], ["/anything/else", 404], ["//task/deck", 404],
 ];
@@ -136,14 +138,14 @@ const pageCases = [
     ["task-zh-iphone", "/task/deck", "iphone", "zh-CN", "link", "这是一个 Zymi 的任务链接", { kind: "task", id: "deck" }],
     ["task-en-iphone", "/task/deck", "iphone", "en-US", "link", "This is a Zymi task link", { kind: "task", id: "deck" }],
     ["room-zh-mac", "/roomid/owtPMO14G1v6Yl9KlRjjDmlKdVC5NbSUPqbiF2Fru30", "mac", "zh-CN", "link", "这是一个 Zymi 的聊天室链接", { kind: "room", room_id: "!owtPMO14G1v6Yl9KlRjjDmlKdVC5NbSUPqbiF2Fru30" }],
-    ["message-en-iphone", "/r/team-alpha:zymi.app/e/Lh9m3k_ZqXo-2vT8pQ1rW5yA7cE0dF4gH6jK9lM2nB4", "iphone", "en-US", "link", "This is a Zymi message link",
-        { kind: "room", room_alias: "#team-alpha:zymi.app", event_id: "$Lh9m3k_ZqXo-2vT8pQ1rW5yA7cE0dF4gH6jK9lM2nB4" }],
-    ["user-zh-iphone", "/u/0b1f0c3e-9a52-4b6e-8f1d-2c3b4a5d6e70:zymi.app", "iphone", "zh-CN", "link", "这是一个 Zymi 的用户链接",
-        { kind: "user", user_id: "@0b1f0c3e-9a52-4b6e-8f1d-2c3b4a5d6e70:zymi.app" }],
+    ["message-en-iphone", `/r/team-alpha:${S}/e/Lh9m3k_ZqXo-2vT8pQ1rW5yA7cE0dF4gH6jK9lM2nB4`, "iphone", "en-US", "link", "This is a Zymi message link",
+        { kind: "room", room_alias: `#team-alpha:${S}`, event_id: "$Lh9m3k_ZqXo-2vT8pQ1rW5yA7cE0dF4gH6jK9lM2nB4" }],
+    ["user-zh-iphone", `/u/0b1f0c3e-9a52-4b6e-8f1d-2c3b4a5d6e70:${S}`, "iphone", "zh-CN", "link", "这是一个 Zymi 的用户链接",
+        { kind: "user", user_id: `@0b1f0c3e-9a52-4b6e-8f1d-2c3b4a5d6e70:${S}` }],
     ["goal-en-mac", "/goal/g_7Kx2", "mac", "en-US", "link", "This is a Zymi goal link", { kind: "goal", id: "g_7Kx2" }],
     ["invalid-zh", "/task/a%2Fb", "iphone", "zh-CN", "malformed", "链接无效", null],
     ["foreign-en", "/u/x:evil.example", "iphone", "en-US", "foreign_server", "This link isn't valid", null],
-    ["unknown-kind-zh", "/U/x:zymi.app", "iphone", "zh-CN", "unknown_kind", "打不开这个链接，可能需要更新 App", null],
+    ["unknown-kind-zh", `/U/x:${S}`, "iphone", "zh-CN", "unknown_kind", "打不开这个链接，可能需要更新 App", null],
     ["reserved-en", "/invite/ABC123", "iphone", "en-US", "reserved", "Please update the app", null],
     ["no-echo-settings-zh", "/settings/%E5%AE%98%E6%96%B9%E5%AE%A2%E6%9C%8D", "iphone", "zh-CN", "unknown_kind", "打不开这个链接，可能需要更新 App", null],
     ["home-zh", "/", "iphone", "zh-CN", "home", "这里是 Zymi 的分享链接。打开别人发给你的链接，会在 Zymi App 里接着打开。", null],
@@ -163,8 +165,8 @@ for (const [name, rawPath, ua, lang, status, heading, link] of pageCases) {
         { status: domStatus, heading: h1, hrefs, expectedHref, echoed });
 }
 // A legacy fragment is replaced by the canonical path rebuilt from the parse result.
-const legacy = await chromeRun([`--user-agent=${UA.iphone}`, "--dump-dom"], `${origin}/#/%23team-alpha%3Azymi.app`);
-check("page", "legacy-fragment-replaced", /data-status="link"/.test(legacy) && legacy.includes('href="zymi-dev://open/r/team-alpha:zymi.app"'), {});
+const legacy = await chromeRun([`--user-agent=${UA.iphone}`, "--dump-dom"], `${origin}/#/%23team-alpha%3A${S}`);
+check("page", "legacy-fragment-replaced", /data-status="link"/.test(legacy) && legacy.includes(`href="zymi-dev://open/r/team-alpha:${S}"`), {});
 const evil = await chromeRun([`--user-agent=${UA.iphone}`, "--dump-dom"], `${origin}/#//evil.example/`);
 check("page", "legacy-protocol-relative-rejected", /data-status="malformed"/.test(evil), {});
 server.close();

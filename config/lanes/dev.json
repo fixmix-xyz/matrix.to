@@ -3,7 +3,7 @@
   "lane": "dev",
   "links": {
     "hosts": ["to-dev.zymi.app"],
-    "server_name": "zymi.app",
+    "server_name": "dev.zymi.app",
     "schemes": {"ios": "zymi-dev", "macos": "zymi-dev"},
     "legacy": {"fragment_bases": ["https://matrix.to/"]},
     "other_lanes": [
@@ -13,7 +13,7 @@
   },
   "pending": {
     "hosts": "B2: to-dev.zymi.app is the spec's placeholder, not a decided domain",
-    "server_name": "U6: dev's Matrix server_name is assumed to be zymi.app like prod",
+    "server_name": "U6 measured 11-13: dev's Matrix user IDs end in :dev.zymi.app (POST /v1/matrix/session on dev.zymi.app), so dev's server_name is dev.zymi.app, not zymi.app",
     "owner_only_notice": "B8: on while reading one (only the owning account opens a Zymi object) is the default"
   },
   "apple": {
