@@ -18,8 +18,9 @@
 |---|---|---|---|
 | B1 | 范围 | **v1 只做 ZYMI 的 zim 和 zymi-ios。** Unseal 和 ZYMIX 只保证旧链接还能用。Android 和 Windows（包括工作区里已有的 Unseal 安卓客户端和 Unseal Electron 客户端，见 §2.9）先挂起 | A1、W1、X1–X3。如果把 Unseal 纳入范围，而 Unseal 又开了联邦，§8.2 的服务器检查也要重写 |
 | B2 | 链接域名 | **全部做成配置项**，代码里不写死。示例值：`to.zymi.app`（prod）、`to-dev.zymi.app`、`to-testing.zymi.app` | P2、P3、Z2、S2、Z4、S4 |
-| B3 | 生产环境的 Team ID、Bundle ID、scheme 和签名指纹 | **没有默认值，留空** | 被它阻塞：P2（AASA 和 assetlinks 的内容）、Z4、S4、prod 发布线的 handoff 向量、落地页的商店链接、Smart App Banner |
-| B4 | zim 有几条发布线 | **对外只有 dev 一条**（Release 连 dev 网关）。Debug 构建连本地 E2E 栈，`server_name` 不同（`localhost:8448`），所以它有自己的一份配置：发布线 `local`，scheme `zim-debug`，host 用 `to-local.zymi.test`（只给 E2E 用）。E2E 靠 `zim-debug` 定位到被测的那一份 App。每个构建只注册自己那一个 scheme，分享扩展也用它交接（Debug 是 `zim-debug://share`，Release 是 `zim://share`） | Z1、§5.3、§6.2 |
+| B3 | 生产环境的 Team ID、Bundle ID 和签名指纹 | **没有默认值，留空** | 被它阻塞：P2（AASA 和 assetlinks 的内容）、Z4、S4、落地页的商店链接、Smart App Banner |
+| B3s | scheme | **负责人已定（11-13）：产品的 scheme 一律是 zymi 家族，不再用 zim。** 规则 `zymi[-<发布线>]`：prod 是 `zymi`，dev 是 `zymi-dev`，testing 是 `zymi-testing`；Debug 构建（连本地栈）是 `zymi-debug`。规范形式 `zymi://open/<路径>`。全表见 §5.3。`zim` 退役，不进旧写法（§12 第三轮）。“dev 线用 `zymi-dev` 而不是 `zymi`”是协调者按这条规则定的，负责人可推翻 | Z1、§5.3、§6.1、§6.2、向量 |
+| B4 | zim 有几条发布线 | **对外只有 dev 一条**（Release 连 dev 网关）。Debug 构建连本地 E2E 栈，`server_name` 不同（`localhost:8448`），所以它有自己的一份配置：发布线 `local`，scheme `zymi-debug`，host 用 `to-local.zymi.test`（只给 E2E 用）。E2E 靠 `zymi-debug` 定位到被测的那一份 App。每个构建只注册自己那一个 scheme，分享扩展也用它交接（Debug 是 `zymi-debug://share`，Release 是 `zymi-dev://share`；scheme 见 B3s） | Z1、§5.3、§6.2 |
 | B5 | 落地页托管 | **用能跑边缘函数的托管**，例如 Cloudflare Workers 或 Pages Functions（只是举例，不是选定） | P1、P3 |
 | B6 | 去不去掉 ZYMIX 发出的 pill 改写（I1b） | **交给 ZYMIX 的负责人定。** 在他答复之前，I1b 不做 | I1b、X2 |
 | B7 | App 内点到的非自家链接，哪些 scheme 交给系统（**待负责人确认**） | **回复正文里的链接只放行 http 和 https。核心卡片的动作按钮另外放行 `mailto:`、`tel:`、`sms:`、`maps:` 四种**，正好是 zymi-core 卡片动作允许的 scheme（`cards/actions.rs` 的 `ALLOWED_SCHEMES`）。别的 scheme 一律不交给系统，并提示「ZIM 不打开这种链接」 | Z1、Z3、§5.2，zymi-ios 的 S3 |
@@ -80,7 +81,7 @@
 | 项 | 现状 | 证据 |
 |---|---|---|
 | 构建身份 | Debug 和 Release **共用** Bundle ID `ai.pagepeek.zim` 和 `ZIM.entitlements`；Release 连的也是 dev 网关 | `project.yml:121-124, 142, 144` |
-| scheme | 只有 `zim`，给分享扩展用：`zim://share?inbox=<id>` | `project.yml:131-134`，`Shared/ShareInbox.swift:4` |
+| scheme | 11-05 起注册 `zim`，给分享扩展用：`zim://share?inbox=<id>`；11-13 起每个构建注册自己的一个（Release `zim`，Debug `zim-debug`），并接 `<scheme>://open`。**按 B3s 改成 `zymi-dev` 和 `zymi-debug`**（§12 第三轮） | `project.yml:127-134, 162, 171, 199, 206`，`Shared/ShareInbox.swift:4` |
 | 处理入口 | `.onOpenURL` 只处理 ShareInbox 和文件，别的 URL 直接丢掉 | `Sources/ZIMApp.swift:191-214` |
 | Associated Domains | 没有 | `ZIM.entitlements` |
 | 分享链接 | 只在 DEBUG 下设了 `ZIM_E2E_SHARE_LINKS_BASE` 时才改写 | `Sources/AccountModel.swift:341-345` |
@@ -193,7 +194,7 @@
    - `https` 加别的发布线的 host → `other_lane`，并带上那条发布线的名字。
      别的发布线的链接不论路径（包括首页）、带不带凭据，都是 `other_lane`，都不打开。`https://to.zymi.app@evil.example/` 的 host 是 `evil.example`；形近字 host 转成 punycode 后是别的 host；这些都不是我们的。
    - `https`，默认端口，并且去掉 query 和片段以后**整串等于**某个旧前缀（配置项 `legacy.fragment_bases`）→ 先看片段：没有 `#/` 的话是网站本身 → `not_ours`（带不带凭据都一样，`https://u@matrix.to/` 也是）；有 `#/` 时带用户名或密码判 `malformed`，否则按旧片段解析。旧前缀换了端口是另一个 origin → `not_ours`。
-   - 本构建配置里列出的任意一个 scheme，加 host `open`（大小写不敏感）→ 带用户名、密码或端口判 `malformed`；否则按规范路径解析；路径为空（`<scheme>://open`）判为 `malformed`；host 是别的（`share`、`connectors`、`wallet`）→ `not_ours`。不在本构建配置里的 scheme → `not_ours`。
+   - 本构建配置里列出的任意一个 scheme，加 host `open`（大小写不敏感）→ 带用户名、密码或端口判 `malformed`；否则按规范路径解析；路径为空（`<scheme>://open`）判为 `malformed`；host 是别的（`share`、`connectors`、`wallet`）或者没有 host（`zymi:open/…`，少了 `//`）→ `not_ours`。scheme 不区分大小写（`ZYMI://` 就是 `zymi://`）。不在本构建配置里的 scheme → `not_ours`，别的发布线的 scheme 也一样（scheme 不带发布线信息，不报 `other_lane`）。
    - `matrix:` → 按 MSC2312 解析，**只认 `u`、`r`、`roomid`**；其他 kind（包括 Zymi 对象）判为 `unknown_kind`。`matrix:` 的路径不折叠点段，`..` 会走到 ID 语法里被拒；它没有 authority，`matrix://host/…` 第一段为空 → `malformed`；段数规则同第 6 条（用户后面不能跟事件）。
    - 旧 scheme（配置项 `legacy.schemes`：`zymix`、`zymixdemo` 的 host 都是 `unseal`）→ 带用户名、密码或端口判 `malformed`；否则按旧 ZYMIX 写法解析。
    - 其他任何情况 → `not_ours`。
@@ -241,14 +242,15 @@
 
 ### 4.5 测试向量 `fixtures/links/vectors.json`（L1）
 
-- 共 112 条：生成 16 条，解析 96 条。解析的 96 条里，规范写法和 scheme 写法（`p-`）21 条，应当拒绝或判为“不是我们的”（`x-`）48 条，旧写法（`l-`）13 条，旧写法里应当拒绝的（`lx-`）14 条。每条都附一句说明。
+- 共 117 条：生成 16 条，解析 101 条。解析的 101 条里，规范写法和 scheme 写法（`p-`）22 条，应当拒绝或判为“不是我们的”（`x-`）52 条，旧写法（`l-`）13 条，旧写法里应当拒绝的（`lx-`）14 条。每条都附一句说明。
 - 第一版 75 条；C1 安全评审第二轮补了 37 条（把 C1 实现时自己定的规则写回本规格和向量，再加上 ID 语法收紧、长度上限、凭据、`#/user/` 写法），见 §12 第二轮。
-- 用了三份**测试用的、按构建划分**的配置，不代表真实部署：`prod`（scheme 等 B3，所以没有 handoff 向量）；`dev`（`server_name` 假定和 prod 一样是 `zymi.app`，未确认，见评审 U6；scheme 是 `zymi-dev` 和 `zim`）；`local`（zim Debug 连本地 E2E 栈，`localhost:8448`，`zim-debug`）。解析器接受配置里列出的每一个 scheme。
+- 用了三份**测试用的、按构建划分**的配置，不代表真实部署：`prod`（iOS 和 macOS 的 scheme 是 `zymi`）；`dev`（`server_name` 假定和 prod 一样是 `zymi.app`，未确认，见评审 U6；iOS 和 macOS 的 scheme 都是 `zymi-dev`）；`local`（zim Debug 连本地 E2E 栈，`localhost:8448`，`zymi-debug`）。scheme 按 §5.3 的表。解析器接受配置里列出的每一个 scheme。
 - 覆盖到的情况：
   - v12 和旧写法两种房间 ID；带端口的 server name（含端口不一致）；非默认端口；`<scheme>://open` 空路径；别的构建的 scheme；`matrix:` 下的 Zymi kind；标准 base64 的事件 ID；UTF-8 别名；含 `/` 的别名。
   - 编码过的 `:`；点段和 `%2e%2e`；反斜杠；空段；大写的 kind；结尾斜杠；host 的大小写和默认端口。
   - 跨发布线的链接；凭据；`http`；`share` 和 `connectors` 这两个 host；`#//evil.example/`；陌生 host 上的旧片段；`web-instance` 和 `client` 两个参数。
   - 第二轮：kind 先于解码、kind 段不解码；只解码一次；C1 控制字符和非法 UTF-8；重复 sigil、bidi 控制符、房间 opaque 里的 `/`、事件 ID 的 `/../` 和 `..`；server 名转小写；形近字 host 和 `host@evil`；别的发布线的首页和凭据；超长输入（我们的、别人的、自家首页）；scheme 写法和旧写法上的凭据、端口、空段；`matrix:` 的点段、authority 和段数；`#/user/@…`。
+  - 第三轮（scheme 改成 zymi 家族）：所有 scheme 向量换成 `zymi`、`zymi-dev`、`zymi-debug`，prod 有了 handoff；新增 `ZYMI://` 大小写、`zymi:open/…`（没有 `//`）、退役的 `zim://open/…`、另一个产品的 `zymix://open/…`、dev 构建上的 `zymi-debug://open/…`。
 - 每个实现的测试都要做两件事：跑完全部向量；把每条生成出来的 url 和 handoff 再解析一遍，结果必须和原来的 link 相同（来回）。
 - **现在的参考实现是 zymi-core**（`crates/zymi-core/src/links.rs`，`cargo test -p zymi-core --test links` 跑全部向量、来回和随机输入）；下面这份 node 参考实现只对过最初的 75 条，没有跟着第二轮更新。落地页的 JS 实现以向量为准，向量没写到的情况以本节和 zymi-core 为准。
 - 写第一稿时，我在 scratchpad 里用 node 的 WHATWG `URL` 写了一份参考实现（`/private/tmp/claude-501/-Users-jelf-Projects-work-zim/4c7627bd-ec56-49a6-b260-6b8f3ad252d6/scratchpad/links-ref.mjs`，运行 `node links-ref.mjs <vectors.json>`），75 条全部通过。我故意改错其中两条，检查确实失败了。这份参考实现**不提交**，只用来证明向量本身前后一致；scratchpad 会被清理，C1 的测试才是长期的证明。
@@ -268,7 +270,7 @@
 ### 5.2 每个 App 只有一个 `LinkRouter`
 
 - `LinkRouter.open(url, origin)` 的流程：调 `link_parse`，然后路由到聊天、Zymi 页面或提示。结果是 `not_ours` 时，要看 URL 是从哪来的：
-  - **系统送进来的**（`onOpenURL`、`onContinueUserActivity`）：交回原来的处理逻辑（比如 `zim://share?inbox=` 交给 ShareInbox；OAuth 回调只认 `ASWebAuthenticationSession`），没有对应的处理逻辑就丢掉。**绝不交回给系统**，否则 `zim://share` 这类链接会被系统送回 App 本身，形成循环。
+  - **系统送进来的**（`onOpenURL`、`onContinueUserActivity`）：交回原来的处理逻辑（比如 `<scheme>://share?inbox=` 交给 ShareInbox；OAuth 回调只认 `ASWebAuthenticationSession`），没有对应的处理逻辑就丢掉。**绝不交回给系统**，否则 `zymi-dev://share` 这类链接会被系统送回 App 本身，形成循环。
   - **App 内点到的**：按原来的过滤规则（只放行 http 和 https，不能带凭据）交给系统。例外是核心卡片的动作按钮，它另外放行 `mailto:`、`tel:`、`sms:`、`maps:`（B7，待负责人确认）。不放行的不交给系统，提示用户。
 - 系统送来的 URL 和用户在 App 内点到的 URL 都只走这一个入口：
   - 系统送来的：`.onOpenURL` 和 `onContinueUserActivity`；
@@ -300,6 +302,26 @@ lane = {
   - 旧前缀是序列化后的 `https` URL（带路径，不带凭据、query 和片段），不能在任何发布线的 host 上。
   - 旧 scheme 不能是上面那些保留 scheme 或平台 scheme，host 是小写的 `[a-z0-9.-]+`。
 
+- **scheme 表（负责人已定，11-13，B3s）。** 规则：产品的 scheme 是 `zymi`，非 prod 的发布线加 `-<发布线名>`，Debug 构建（连本地栈，发布线 `local`）用 `zymi-debug`。同一台设备上装多条线时各认各的，不会抢。每个构建**只注册自己那一个**，`schemes` 里每个平台填同一个值。这张表就是各端配置里的一行，代码里不写死 scheme：
+
+  | 发布线 | iOS | macOS | Android | Windows | 现状 |
+  |---|---|---|---|---|---|
+  | prod | `zymi` | `zymi` | `zymi` | `zymi` | 还没有 prod 构建（Bundle ID 等仍等 B3） |
+  | dev | `zymi-dev` | `zymi-dev` | `zymi-dev` | `zymi-dev` | zymi-ios dev 的 `callback_scheme` 已经是 `zymi-dev`（`Configurations/Local/dev.json`，不提交）；zim Release 连 dev 网关，从 `zim` 改成它 |
+  | testing | `zymi-testing` | `zymi-testing` | `zymi-testing` | `zymi-testing` | zymi-ios 有 testing 线，`callback_scheme` 还没配 |
+  | local（Debug） | — | `zymi-debug` | — | — | zim Debug，从 `zim-debug` 改成它；只给 E2E 用 |
+
+  Android 和 Windows 两列等 B1，接入时照这张表取名。`zymix`、`zymixdemo`、`siuper` 是 ZYMIX 的，`unseal` 是 Unseal 的，都不是本产品的 scheme（`zymix`、`zymixdemo` 只作为旧写法读 `unseal` 这个 host）。
+- **一个 scheme，按 host 分用途。** iOS 的 OAuth 回调和深链**共用**这一个 scheme（zymi-ios 的 `callback_scheme` 就是它），macOS 也一样。host 各管各的，互不冲突：
+
+  | host | 用途 | 谁处理 | 依据 |
+  |---|---|---|---|
+  | `open` | 深链交接：`<scheme>://open/<路径>`，路径同 https 规范链接 | `LinkRouter` → `link_parse` | 本规格 §4 |
+  | `share` | 分享扩展交给 App：`<scheme>://share?inbox=<uuid>`（macOS） | ShareInbox，`link_parse` 判 `not_ours` | zim `Shared/ShareInbox.swift` |
+  | `connectors` | 连接器 OAuth 回调：`<scheme>://connectors?link_id=…` | 只从 `ASWebAuthenticationSession` 收，`.onOpenURL` 收到的一律不处理 | zymi-ios `ZAgentAppCallbacks.Route`（`ZymiModel/ZAgentAppCallbacks.swift:5`），`docs/extraction/callback-contract.md:10-12`；zymi-core `settings` 规则 16 |
+  | `wallet` | 商店钱包回调：`<scheme>://wallet?…` | 同上 | 同上 |
+
+  zymi-ios 现有的回调只有 `connectors` 和 `wallet` 两个 host，路径必须为空或 `/`（`ZAgentAppCallbacks.matches`），和 `open`、`share` 不冲突。以后再加 host 时要先查这张表。OAuth 回调的 scheme 也按这张表取：服务端的 `ZYMI_CONNECTOR_ALLOWED_REDIRECTS` 和 `ZYMI_SHOP_APP_CALLBACK_URI` 按环境登记 `<scheme>://connectors`、`<scheme>://wallet`。zim 现在把回调 scheme 写死在代码里（`Sources/Onboarding/OnboardingModel.swift:50-56`：Debug `zymi-dev`，Release `zymi`），和这张表不一致，要改成取本构建的 scheme（Release `zymi-dev`，Debug `zymi-debug`），同时登记到对应环境的服务端白名单里。
 - iPad 上的 Safari 默认用桌面 UA，和 Mac 分不出来。落地页分不清平台时，同时显示 iOS 和 macOS 两个按钮。
 
 ---
@@ -318,12 +340,12 @@ lane = {
   {"/":"/agent/*"},{"/":"/artifact/*"},{"/":"/circle/*"},{"/":"/invite/*"},{"/":"/team/*"}]}]}}
 ```
 
-- **scheme：** 用本发布线的 `callback_scheme`，host 是 `open`。**根上的 `.onOpenURL` 只认 host `open`**。外面送进来的 `<scheme>://connectors` 和 `<scheme>://wallet` 一律什么都不做，绝不能当成 OAuth 完成回调；OAuth 回调仍然只从 `ASWebAuthenticationSession` 进来。
+- **scheme：** 用本发布线的 `callback_scheme`（§5.3 的表：`zymi`、`zymi-dev`、`zymi-testing`），host 是 `open`。**根上的 `.onOpenURL` 只认 host `open`**。外面送进来的 `<scheme>://connectors` 和 `<scheme>://wallet` 一律什么都不做，绝不能当成 OAuth 完成回调；OAuth 回调仍然只从 `ASWebAuthenticationSession` 进来。
 - **入口：** `.onOpenURL` 和 `.onContinueUserActivity(NSUserActivityTypeBrowsingWeb)` 都交给 `LinkRouter`。登录前收到的链接先存起来，登录后再打开。
 
 ### 6.2 macOS（zim）
 
-- **发布线（B4）：** 现在只有 dev。Debug 另外注册 `zim-debug`，`zim` 保留给分享扩展和 Release，行为不变。以后如果出正式版，要单独的 Bundle ID 和 scheme（另提）。
+- **发布线（B4）：** 现在只有 dev。Release 注册 `zymi-dev`，Debug 注册 `zymi-debug`，分享扩展用本构建的那一个交接（`zymi-dev://share`、`zymi-debug://share`）。`zim` 和 `zim-debug` 退役，不再注册，也不进旧写法（§12 第三轮）。以后出 prod 构建时用 `zymi`，要单独的 Bundle ID（B3）。
 - **Universal links：** entitlements 里加 `applinks:<host>`（host 来自 B2，appID 来自 B3）。**待在签名构建上确认（Z4）**：macOS 上一般只有 Safari 会走 universal links，所以落地页一定要有“在 ZIM 中打开”按钮；能不能用 Developer ID 分发，取决于描述文件，并入 B3 一起问。
 - **入口：** 在 `ZIMApp.swift:191` 里、ShareInbox 分支之后，加 host `open` 的分支，再加 `.onContinueUserActivity`，都交给 `LinkRouter`。
 - **生成：** 每个构建都按发布线注入 `ChatLinkBuilder`；Debug 可以用环境变量 `ZIM_E2E_SHARE_LINKS=matrixto` 关掉注入，给 E2E 当对照组用。
@@ -445,7 +467,7 @@ lane = {
 
 | ID | 任务 | 怎么证明（XCUITest，用 `scripts/e2e.sh -only-testing:ZIMUITests/DeepLinkTests/...`） |
 |---|---|---|
-| Z1 | Debug 注册 `zim-debug`；`.onOpenURL` 加 `open` 分支，交给 `LinkRouter` | 用 `XCUIApplication().open(url)` 打开链接（**这个 API 在 macOS 上能不能用待确认**；不能用就退回 `NSWorkspace.open(_:withApplicationAt:configuration:)`，指定被测的那份 App）。打开 `zim-debug://open/roomid/<种子 v12 房间>`，中栏显示这个房间；`…/e/<事件>` 跳到消息并高亮；`/task/<id>` 进到任务页；没加入的房间先出确认页；`zim-debug://open/../x` 显示“打不开这个链接，可能需要更新 App”（`unknown_kind`）；`/u/x:evil.example` 显示“链接无效”。对照：`ShareTests` 照常通过 |
+| Z1 | Debug 注册 `zymi-debug`（Release `zymi-dev`）；`.onOpenURL` 加 `open` 分支，交给 `LinkRouter` | 用 `XCUIApplication().open(url)` 打开链接（**这个 API 在 macOS 上能不能用待确认**；不能用就退回 `NSWorkspace.open(_:withApplicationAt:configuration:)`，指定被测的那份 App）。打开 `zymi-debug://open/roomid/<种子 v12 房间>`，中栏显示这个房间；`…/e/<事件>` 跳到消息并高亮；`/task/<id>` 进到任务页；没加入的房间先出确认页；`zymi-debug://open/../x` 显示“打不开这个链接，可能需要更新 App”（`unknown_kind`）；`/u/x:evil.example` 显示“链接无效”。对照：`ShareTests` 照常通过 |
 | Z2 | 正式构建注入 `ChatLinkBuilder`，同时改掉断言 matrix.to 的那几个测试（`MentionTests.swift:62` 不用改） | 复制出来的房间链接和消息链接等于 `build` 向量的格式；把复制出来的链接再用 Z1 的方式打开，能回到原处。对照：设 `ZIM_E2E_SHARE_LINKS=matrixto` 时，链接是 matrix.to |
 | Z3 | `LinkRouter` 接管 §2.3 列出的 15 处和 IMChatMac 的两处 | 打开调试开关，bob 发一条 `https://<dev host>/task/<id>`，alice 点了以后，日志里出现 `link-route task`，**没有** `debug-open` 或 `link-system`；`https://example.com` 出现 `link-system`。zim 的 `rg` 检查（§5.2）通过 |
 | Z4 | entitlements 加 associated domains，加 `.onContinueUserActivity`（被 B2、B3 阻塞） | 只能在 staging 环境的签名构建上验证，本地跑不了 |
@@ -486,7 +508,7 @@ lane = {
 ## 11. 要负责人回答的问题
 
 **阻塞实现的：**
-- B3：Team ID、Bundle ID、各平台的 scheme、签名指纹，以及 zim 的分发方式（Developer ID 还是 Mac App Store）。被它阻塞的是 P2、Z4、S4、prod 的 handoff 向量和商店入口。
+- B3：Team ID、Bundle ID、签名指纹，以及 zim 的分发方式（Developer ID 还是 Mac App Store）。被它阻塞的是 P2、Z4、S4 和商店入口。scheme 已定（B3s）。
 - B1、B2、B4、B5：已经有默认值，负责人确认或推翻即可。
 - B6：交给 ZYMIX 的负责人。
 
@@ -547,4 +569,24 @@ lane = {
 | L4 | 采纳 | server name 一律返回小写（§4.1 第 8 条） |
 | L5 | 采纳 | 旧片段认 `#/user/@…`（IMKit `MatrixHTML.mentionedUser` 认这种写法） |
 | 评审建议的 36 条向量 | 采纳 27 条建议（31 条向量），另加 6 条，共 +37（75 → 112） | 采纳第 1–14、16、18、25、27–35 条和第 36 条的全部四项（超长分成我们的和别人的两条）；另加 3 条生成向量（`$..`、`@@x`、bidi 别名）和别名 bidi、房间 opaque 含 `/`、超长的自家首页（`x-too-long-root`，钉住“超长时按常规规则判前缀”）。**没加**第 15、17、19–24、26 条：它们只是在固定 WHATWG URL 本身的行为（结尾点的 host、反斜杠、全角字母、`%2E`、空 userinfo、`zim:open`、`zim:///`、编码过的 host），和本语法无关；第 15、17、19–21、23 条留在 zymi-core 的测试里 |
+
+### 第三轮：scheme 从 zim 改成 zymi 家族（负责人 11-13）
+
+负责人原话：「深链接要改一下用zymi 而不是zim」。
+
+| 项 | 处理 | 说明 |
+|---|---|---|
+| 命名规则 | 已定 | `zymi[-<发布线>]`，Debug 用 `zymi-debug`（B3s、§5.3 的表）。dev 线用 `zymi-dev` 而不是 `zymi`：和 zymi-ios 已有的 `callback_scheme` 一致；以后出 prod 的 macOS 构建时不用再改名；同一台机器装多条线时不会抢同一个 scheme。这一点是协调者按规则定的，负责人可推翻，推翻只改 §5.3 那张表和向量的 `lanes` |
+| `zim` 进不进旧写法 | **不进，直接删** | 证据见下 |
+| 向量 | 112 → 117 | 所有 scheme 向量改用 `zymi`、`zymi-dev`、`zymi-debug`；prod 有了 handoff；新增 5 条防混淆的：`p-scheme-case`（`ZYMI://`）、`x-scheme-no-slashes`（`zymi:open/…`）、`x-zim-retired`（`zim://open/…` → `not_ours`）、`x-zymix-open`（`zymix://open/…` → `not_ours`）、`x-debug-on-dev`（dev 构建上的 `zymi-debug://open/…` → `not_ours`） |
+
+`zim` 为什么不进旧写法（只有已发布的构建发出过或登记过的 scheme 才需要继续解析）：
+
+- **注册时间很短**：zim 从 11-05 起注册 `zim`（`zim` 提交 `ce1e1a9`，分享扩展），当时只用于 `zim://share`，这是同一个 App bundle 里扩展交给 App 的内部交接；11-13 起才加上 `zim://open` 和 Debug 的 `zim-debug`（`a1421a9`）。
+- **没有分发渠道**：zim 是 Automatic 签名，用的是开发证书（`project.yml:43-44`）；仓库里没有 Developer ID、公证、TestFlight 或 App Store 的脚本，也没有 tag。
+- **装着的那份也只是本机构建**：`/Applications/ZIM.app`（`ai.pagepeek.zim` 1.0 (1)，11-12 构建）由 `Apple Development: Jelf Liang` 签名，`spctl -a` 判 `rejected`，不能拿到别的机器上运行。
+- **没有对外发出过 zim 链接**：zymi-core 生成的永远是 https 规范链接；`<scheme>://open` 只由落地页交接，而落地页还没部署（P1）。分享扩展在 App bundle 里面，和 App 一起换 scheme，不存在“旧扩展配新 App”的情况。
+- 所以 `zim` 和 `zim-debug` 直接退役：不生成、不解析、不注册；向量 `x-zim-retired` 钉住 `zim://open/…` 是 `not_ours`。本机上那份旧 ZIM.app 在被新构建替换之前仍会认领 `zim://`，但已经没有任何东西会发出这种链接。
+
+各端要跟着改的：zim（`project.yml` 的 `ZIM_LINK_SCHEME`：Release `zymi-dev`、Debug `zymi-debug`，App 和分享扩展都要改；Info.plist 的 `ZimLinkScheme` 和 lane 配置里的 `schemes.macos`；UITests 里的 `zim-debug://`；回调 scheme 改为取本构建的 scheme，见 §5.3）；zymi-ios（`callback_scheme` 照表配置，testing 线 `zymi-testing`，prod `zymi`；`.onOpenURL` 只认 `open`）；Android 和 Windows 将来接入时照 §5.3 的表取名。
 
