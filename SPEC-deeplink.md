@@ -194,7 +194,7 @@
    - `https` 加别的发布线的 host → `other_lane`，并带上那条发布线的名字。
      别的发布线的链接不论路径（包括首页）、带不带凭据，都是 `other_lane`，都不打开。`https://to.zymi.app@evil.example/` 的 host 是 `evil.example`；形近字 host 转成 punycode 后是别的 host；这些都不是我们的。
    - `https`，默认端口，并且去掉 query 和片段以后**整串等于**某个旧前缀（配置项 `legacy.fragment_bases`）→ 先看片段：没有 `#/` 的话是网站本身 → `not_ours`（带不带凭据都一样，`https://u@matrix.to/` 也是）；有 `#/` 时带用户名或密码判 `malformed`，否则按旧片段解析。旧前缀换了端口是另一个 origin → `not_ours`。
-   - 本构建配置里列出的任意一个 scheme，加 host `open`（大小写不敏感）→ 带用户名、密码或端口判 `malformed`；否则按规范路径解析；路径为空（`<scheme>://open`）判为 `malformed`；host 是别的（`share`、`connectors`、`wallet`）或者没有 host（`zymi:open/…`，少了 `//`）→ `not_ours`。scheme 不区分大小写（`ZYMI://` 就是 `zymi://`）。不在本构建配置里的 scheme → `not_ours`，别的发布线的 scheme 也一样（scheme 不带发布线信息，不报 `other_lane`）。
+   - 本构建配置里列出的任意一个 scheme，加 host `open`（大小写不敏感）→ 带用户名、密码或端口判 `malformed`；否则按规范路径解析；路径为空（`<scheme>://open`）判为 `malformed`；host 是别的（`share`、`connectors`、`wallet`）或者没有 host（`zymi:open/…`，少了 `//`）→ `not_ours`。scheme 不区分大小写（`ZYMI://` 就是 `zymi://`）。别的发布线的 scheme（配置项 `other_lanes` 里各线的 `schemes`）→ `other_lane`，带上那条线的名字；不管 host 和路径（`open`、`share`、没有 `//` 的都算）、带不带凭据，和别的发布线的 https host 一样，都不打开。哪条线都没列出的 scheme → `not_ours`，哪怕名字像 `zymi-staging`：解析器只按配置认 scheme，不按命名规则猜。
    - `matrix:` → 按 MSC2312 解析，**只认 `u`、`r`、`roomid`**；其他 kind（包括 Zymi 对象）判为 `unknown_kind`。`matrix:` 的路径不折叠点段，`..` 会走到 ID 语法里被拒；它没有 authority，`matrix://host/…` 第一段为空 → `malformed`；段数规则同第 6 条（用户后面不能跟事件）。
    - 旧 scheme（配置项 `legacy.schemes`：`zymix`、`zymixdemo` 的 host 都是 `unseal`）→ 带用户名、密码或端口判 `malformed`；否则按旧 ZYMIX 写法解析。
    - 其他任何情况 → `not_ours`。
@@ -242,7 +242,7 @@
 
 ### 4.5 测试向量 `fixtures/links/vectors.json`（L1）
 
-- 共 117 条：生成 16 条，解析 101 条。解析的 101 条里，规范写法和 scheme 写法（`p-`）22 条，应当拒绝或判为“不是我们的”（`x-`）52 条，旧写法（`l-`）13 条，旧写法里应当拒绝的（`lx-`）14 条。每条都附一句说明。
+- 共 121 条：生成 16 条，解析 105 条。解析的 105 条里，规范写法和 scheme 写法（`p-`）22 条，应当拒绝、判为“不是我们的”或别的发布线的（`x-`）56 条，旧写法（`l-`）13 条，旧写法里应当拒绝的（`lx-`）14 条。每条都附一句说明。
 - 第一版 75 条；C1 安全评审第二轮补了 37 条（把 C1 实现时自己定的规则写回本规格和向量，再加上 ID 语法收紧、长度上限、凭据、`#/user/` 写法），见 §12 第二轮。
 - 用了三份**测试用的、按构建划分**的配置，不代表真实部署：`prod`（iOS 和 macOS 的 scheme 是 `zymi`）；`dev`（`server_name` 假定和 prod 一样是 `zymi.app`，未确认，见评审 U6；iOS 和 macOS 的 scheme 都是 `zymi-dev`）；`local`（zim Debug 连本地 E2E 栈，`localhost:8448`，`zymi-debug`）。scheme 按 §5.3 的表。解析器接受配置里列出的每一个 scheme。
 - 覆盖到的情况：
@@ -250,7 +250,7 @@
   - 编码过的 `:`；点段和 `%2e%2e`；反斜杠；空段；大写的 kind；结尾斜杠；host 的大小写和默认端口。
   - 跨发布线的链接；凭据；`http`；`share` 和 `connectors` 这两个 host；`#//evil.example/`；陌生 host 上的旧片段；`web-instance` 和 `client` 两个参数。
   - 第二轮：kind 先于解码、kind 段不解码；只解码一次；C1 控制字符和非法 UTF-8；重复 sigil、bidi 控制符、房间 opaque 里的 `/`、事件 ID 的 `/../` 和 `..`；server 名转小写；形近字 host 和 `host@evil`；别的发布线的首页和凭据；超长输入（我们的、别人的、自家首页）；scheme 写法和旧写法上的凭据、端口、空段；`matrix:` 的点段、authority 和段数；`#/user/@…`。
-  - 第三轮（scheme 改成 zymi 家族）：所有 scheme 向量换成 `zymi`、`zymi-dev`、`zymi-debug`，prod 有了 handoff；新增 `ZYMI://` 大小写、`zymi:open/…`（没有 `//`）、退役的 `zim://open/…`、另一个产品的 `zymix://open/…`、dev 构建上的 `zymi-debug://open/…`。
+  - 第三轮（scheme 改成 zymi 家族）：所有 scheme 向量换成 `zymi`、`zymi-dev`、`zymi-debug`，prod 有了 handoff；新增 `ZYMI://` 大小写、`zymi:open/…`（没有 `//`）、退役的 `zim://open/…`、另一个产品的 `zymix://open/…`；别的发布线的 scheme 判 `other_lane`（`open`、`share`、大小写），没有哪条线列出的 `zymi-staging` 判 `not_ours`。
 - 每个实现的测试都要做两件事：跑完全部向量；把每条生成出来的 url 和 handoff 再解析一遍，结果必须和原来的 link 相同（来回）。
 - **现在的参考实现是 zymi-core**（`crates/zymi-core/src/links.rs`，`cargo test -p zymi-core --test links` 跑全部向量、来回和随机输入）；下面这份 node 参考实现只对过最初的 75 条，没有跟着第二轮更新。落地页的 JS 实现以向量为准，向量没写到的情况以本节和 zymi-core 为准。
 - 写第一稿时，我在 scratchpad 里用 node 的 WHATWG `URL` 写了一份参考实现（`/private/tmp/claude-501/-Users-jelf-Projects-work-zim/4c7627bd-ec56-49a6-b260-6b8f3ad252d6/scratchpad/links-ref.mjs`，运行 `node links-ref.mjs <vectors.json>`），75 条全部通过。我故意改错其中两条，检查确实失败了。这份参考实现**不提交**，只用来证明向量本身前后一致；scratchpad 会被清理，C1 的测试才是长期的证明。
@@ -289,14 +289,14 @@ lane = {
   name, hosts: [...], server_name,                 // hosts[0] 用来生成；host 可以写成 host:port
   schemes: { ios?, macos?, android?, windows? },   // 生成 handoff 用；解析时接受这里列出的每一个
   legacy: { fragment_bases: [...], schemes: { zymix: "unseal", zymixdemo: "unseal" } },
-  other_lanes: { name: [hosts] }
+  other_lanes: [{ name, hosts: [...], schemes: [...] }]   // schemes 可省略（默认空），省略时那条线的 scheme 链接判 not_ours
 }
 ```
 
 - **列表都是必填**，没有默认值：少传一个 `legacy`，所有 `matrix.to` 写法的 mention pill 都会判成 `not_ours` 交给系统浏览器，而且没有任何报错。`legacy` 由 zymi-core 统一提供（`link_legacy_standard()`：`https://matrix.to/`、`https://dev.unseal.chat/AgentMessenger/to-share/`、`zymix` 和 `zymixdemo` 的 `unseal`），各端直接取用，不自己抄一份。TS 端的配置对象多了 `.d.ts` 里没有的字段也抛错。
 - **配置校验**：每个函数先校验配置，通不过就抛错（§4.3）：
   - `hosts` 不能为空；每个 host 必须是 WHATWG URL 序列化后的写法（小写、punycode、不带默认端口、不带路径和凭据）；同一个 host 不能出现两次，也不能同时属于两条发布线。
-  - 别的发布线名字不能为空、不能重复。
+  - 别的发布线名字不能为空、不能重复；别的发布线的 scheme 和平台 scheme 的要求一样，不能是本构建的 scheme，也不能同时属于两条线。
   - `server_name` 是小写的合法 server name。
   - 平台 scheme 是 `[a-z][a-z0-9+.-]*`，不能是 `http`、`https`、`matrix`、`javascript`、`data`、`file`、`blob`、`about`、`ws`、`wss`、`ftp`，也不能是旧 scheme。
   - 旧前缀是序列化后的 `https` URL（带路径，不带凭据、query 和片段），不能在任何发布线的 host 上。
@@ -578,7 +578,8 @@ lane = {
 |---|---|---|
 | 命名规则 | 已定 | `zymi[-<发布线>]`，Debug 用 `zymi-debug`（B3s、§5.3 的表）。dev 线用 `zymi-dev` 而不是 `zymi`：和 zymi-ios 已有的 `callback_scheme` 一致；以后出 prod 的 macOS 构建时不用再改名；同一台机器装多条线时不会抢同一个 scheme。这一点是协调者按规则定的，负责人可推翻，推翻只改 §5.3 那张表和向量的 `lanes` |
 | `zim` 进不进旧写法 | **不进，直接删** | 证据见下 |
-| 向量 | 112 → 117 | 所有 scheme 向量改用 `zymi`、`zymi-dev`、`zymi-debug`；prod 有了 handoff；新增 5 条防混淆的：`p-scheme-case`（`ZYMI://`）、`x-scheme-no-slashes`（`zymi:open/…`）、`x-zim-retired`（`zim://open/…` → `not_ours`）、`x-zymix-open`（`zymix://open/…` → `not_ours`）、`x-debug-on-dev`（dev 构建上的 `zymi-debug://open/…` → `not_ours`） |
+| 向量 | 112 → 121 | 所有 scheme 向量改用 `zymi`、`zymi-dev`、`zymi-debug`；prod 有了 handoff；新增 9 条：`p-scheme-case`（`ZYMI://`）、`x-scheme-no-slashes`（`zymi:open/…` → `not_ours`）、`x-zim-retired`（`zim://open/…` → `not_ours`）、`x-zymix-open`（`zymix://open/…` → `not_ours`）、`x-debug-on-dev`（dev 构建上的 `zymi-debug://open/…` → `other_lane: local`）、`x-other-lane-scheme`、`x-other-lane-scheme-share`、`x-other-lane-scheme-case`（→ `other_lane`）、`x-unknown-zymi-scheme`（`zymi-staging://…` → `not_ours`）；`x-other-build-scheme` 从 `not_ours` 改成 `other_lane: dev` |
+| 别的发布线的 scheme | 判 `other_lane` | zim 那边发现：`other_lanes` 原来只有 host，dev 构建收到 `zymi://open/…` 会判成 `not_ours`。按 `zymi[-<发布线>]` 的约定，这是“我们的、但属于另一条线”，和 https 一样报 `other_lane`。`other_lanes` 每条加 `schemes`，默认空：旧配置照旧能用，只是那条线的 scheme 链接还判 `not_ours`，退化成原来的安全行为（不打开，系统送来的也不交回系统）。没有哪条线列出的 scheme 一律 `not_ours`，不按名字猜，因为 scheme 只在配置表里定义 |
 
 `zim` 为什么不进旧写法（只有已发布的构建发出过或登记过的 scheme 才需要继续解析）：
 
