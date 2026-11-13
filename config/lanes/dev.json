@@ -1,0 +1,31 @@
+{
+  "about": "The dev lane's landing page (SPEC-deeplink.md §5.3, §6.5). Values marked pending are placeholders until the owner decides them: the link host (B2), the hosting (B5), production identities (B3), store links (Q9) and who may open a Zymi object's link (B8). Nothing here is a secret.",
+  "lane": "dev",
+  "links": {
+    "hosts": ["to-dev.zymi.app"],
+    "server_name": "zymi.app",
+    "schemes": {"ios": "zymi-dev", "macos": "zymi-dev"},
+    "legacy": {"fragment_bases": ["https://matrix.to/"]},
+    "other_lanes": [
+      {"name": "prod", "hosts": ["to.zymi.app"], "schemes": ["zymi"]},
+      {"name": "local", "hosts": ["to-local.zymi.test"], "schemes": ["zymi-debug"]}
+    ]
+  },
+  "pending": {
+    "hosts": "B2: to-dev.zymi.app is the spec's placeholder, not a decided domain",
+    "server_name": "U6: dev's Matrix server_name is assumed to be zymi.app like prod",
+    "owner_only_notice": "B8: on while reading one (only the owning account opens a Zymi object) is the default"
+  },
+  "apple": {
+    "app_ids": ["VZZQ2Q6734.ai.pagepeek.app.zymi.dev"]
+  },
+  "android": {
+    "package_name": "",
+    "sha256_cert_fingerprints": []
+  },
+  "stores": {
+    "ios": "",
+    "macos": ""
+  },
+  "owner_only_notice": true
+}

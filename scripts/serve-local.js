@@ -1,48 +1,45 @@
-/*
-Copyright 2020 Bruno Windels <bruno@windels.cloud>
+// Serves a built lane locally through the same edge function a host would run (landing/edge.js), so status codes,
+// headers and the raw path (`%2F` kept) behave as deployed:
+//
+//   node scripts/build.js --lane dev && node scripts/serve-local.js [--lane dev] [--port 5000]
+import fs from "node:fs/promises";
+import http from "node:http";
+import path from "node:path";
+import { fileURLToPath } from "node:url";
+import { handleRequest } from "../landing/edge.js";
 
-Licensed under the Apache License, Version 2.0 (the "License");
-you may not use this file except in compliance with the License.
-You may obtain a copy of the License at
+const root = path.join(path.dirname(fileURLToPath(import.meta.url)), "..");
+const TYPES = { ".html": "text/html; charset=utf-8", ".js": "text/javascript; charset=utf-8", ".css": "text/css; charset=utf-8", ".json": "application/json" };
 
-    http://www.apache.org/licenses/LICENSE-2.0
-
-Unless required by applicable law or agreed to in writing, software
-distributed under the License is distributed on an "AS IS" BASIS,
-WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-See the License for the specific language governing permissions and
-limitations under the License.
-*/
-
-import finalhandler from "finalhandler"
-import http from "http"
-import serveStatic from "serve-static"
-import path from "path"
-import { fileURLToPath } from "url";
-const projectDir = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../");
-
-// Serve up parent directory with cache disabled
-const serve = serveStatic(
-    projectDir,
-    {
-        etag: false,
-        setHeaders: res => {
-            res.setHeader("Pragma", "no-cache");
-            res.setHeader("Cache-Control", "no-cache, no-store, must-revalidate");
-            res.setHeader("Expires", "Wed, 21 Oct 2015 07:28:00 GMT");
-            // same CSP as matrix.to server is using, so local testing happens under similar environment
-            res.setHeader("Content-Security-Policy", "default-src 'self'; script-src 'self' 'unsafe-inline' 'unsafe-eval'; style-src 'self' 'unsafe-inline'; img-src * data:; connect-src *; font-src 'self'; manifest-src 'self'; form-action 'self'; navigate-to *;");
-        },
-        index: ['index.html', 'index.htm']
+/** The built files as the edge function's `site`. */
+export async function loadSite(lane) {
+    const dir = path.join(root, "build", lane);
+    const config = JSON.parse(await fs.readFile(path.join(root, "config/lanes", `${lane}.json`), "utf8"));
+    const files = new Map();
+    async function walk(sub) {
+        for (const entry of await fs.readdir(path.join(dir, sub), { withFileTypes: true })) {
+            const rel = sub ? `${sub}/${entry.name}` : entry.name;
+            if (entry.isDirectory()) { await walk(rel); continue; }
+            const type = rel.startsWith(".well-known/") ? "application/json" : TYPES[path.extname(rel)] ?? "application/octet-stream";
+            files.set(`/${rel}`, { type, body: await fs.readFile(path.join(dir, rel)) });
+        }
     }
-);
- 
-// Create server
-const server = http.createServer(function onRequest (req, res) {
-    console.log(req.method, req.url);
-    serve(req, res, finalhandler(req, res))
-});
+    await walk("");
+    return { config, files };
+}
 
-// Listen
-server.listen(5000);
-console.log("Listening on port 5000");
+if (process.argv[1] === fileURLToPath(import.meta.url)) {
+    const args = process.argv.slice(2);
+    const lane = args.includes("--lane") ? args[args.indexOf("--lane") + 1] : "dev";
+    const port = Number(args.includes("--port") ? args[args.indexOf("--port") + 1] : 5000);
+    const site = await loadSite(lane);
+    const server = http.createServer(async (req, res) => {
+        // req.url is the raw request target: nothing decoded, as §6.5 requires of the host.
+        const request = new Request(`http://localhost:${port}${req.url}`, { method: req.method });
+        const response = handleRequest(request, site);
+        res.writeHead(response.status, Object.fromEntries(response.headers));
+        res.end(Buffer.from(await response.arrayBuffer()));
+        console.log(req.method, req.url, response.status);
+    });
+    server.listen(port, "127.0.0.1", () => console.log(`serving the ${lane} landing page on http://127.0.0.1:${port}`));
+}

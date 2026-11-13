@@ -1,307 +1,76 @@
-/*
-Copyright 2020 Bruno Windels <bruno@windels.cloud>
-Copyright 2020 The Matrix.org Foundation C.I.C.
+// Builds the landing page for one lane (SPEC-deeplink.md §6.5, P1/P2) from config/lanes/<lane>.json:
+//
+//   node scripts/build.js [--lane dev] [--out build/dev]
+//
+// Output: the page (index.html, page.js, links.js, landing.css), config.js (the lane's link config as a same-origin
+// module: the CSP's connect-src 'none' forbids fetching it), and the two .well-known files generated from the config:
+// apple-app-site-association (§6.1: the canonical kinds' paths only) and assetlinks.json (§6.3; empty until Android
+// has a package, B1). No dependencies: Node's own modules only. The upstream matrix.to page (src/, css/, index.html)
+// is no longer built.
+import fs from "node:fs/promises";
+import path from "node:path";
+import { fileURLToPath } from "node:url";
+import { validateConfig } from "../landing/links.js";
+import { CANONICAL_KINDS } from "../landing/edge.js";
 
-Licensed under the Apache License, Version 2.0 (the "License");
-you may not use this file except in compliance with the License.
-You may obtain a copy of the License at
+const root = path.join(path.dirname(fileURLToPath(import.meta.url)), "..");
+const PAGE_FILES = ["index.html", "page.js", "links.js", "landing.css"];
 
-    http://www.apache.org/licenses/LICENSE-2.0
-
-Unless required by applicable law or agreed to in writing, software
-distributed under the License is distributed on an "AS IS" BASIS,
-WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-See the License for the specific language governing permissions and
-limitations under the License.
-*/
-
-import cheerio from "cheerio";
-import fs from "fs/promises";
-import path from "path";
-import xxhash from 'xxhashjs';
-import { rollup } from 'rollup';
-import postcss from "postcss";
-import postcssImport from "postcss-import";
-// needed for legacy bundle
-import babel from '@rollup/plugin-babel';
-// needed to find the polyfill modules in the main-legacy.js bundle
-import { nodeResolve } from '@rollup/plugin-node-resolve';
-// needed because some of the polyfills are written as commonjs modules
-import commonjs from '@rollup/plugin-commonjs';
-// multi-entry plugin so we can add polyfill file to main
-import multi from '@rollup/plugin-multi-entry';
-import { terser } from "rollup-plugin-terser";
-import replace from "@rollup/plugin-replace";
-// replace urls of asset names with content hashed version
-import postcssUrl from "postcss-url";
-import cssvariables from "postcss-css-variables";
-import autoprefixer from "autoprefixer";
-import flexbugsFixes from "postcss-flexbugs-fixes";
-
-import {createClients} from "../src/open/clients/index.js";
-
-import { fileURLToPath } from 'url';
-import { dirname } from 'path';
-const projectDir = path.join(dirname(fileURLToPath(import.meta.url)), "../");
-
-async function build() {
-    // get version number
-    const version = JSON.parse(await fs.readFile(path.join(projectDir, "package.json"), "utf8")).version;
-    // clear target dir
-    const targetDir = path.join(projectDir, "build/");
-    await removeDirIfExists(targetDir);
-    await fs.mkdir(targetDir);
-    await fs.mkdir(path.join(targetDir, "images"));
-    await fs.mkdir(path.join(targetDir, "img")); // contains the badge image for historical reasons, unhashed
-    await fs.mkdir(path.join(targetDir, ".well-known"));
-    const assets = new AssetMap(targetDir);
-    const imageAssets = await copyFolder(path.join(projectDir, "images"), path.join(targetDir, "images"));
-    assets.addSubMap(imageAssets);
-    await assets.write(`bundle.js`, await buildJs("src/main.js", assets, ["src/polyfill.js"]));
-    await assets.write(`bundle.css`, await buildCss("css/main.css", targetDir, assets));
-    await assets.writeUnhashed(".well-known/apple-app-site-association", buildAppleAssociatedAppsFile(createClients()));
-    await assets.writeUnhashed("index.html", await buildHtml(assets));
-    await assets.writeUnhashed("img/matrix-badge.svg", await fs.readFile(path.join(projectDir, "images-nohash/matrix-badge.svg")));
-    const globalHash = assets.hashForAll();
-    console.log(`built matrix.to ${version} (${globalHash}) successfully with ${assets.size} files`);
-}
-
-async function buildHtml(assets) {
-    const devHtml = await fs.readFile(path.join(projectDir, "index.html"), "utf8");
-    const doc = cheerio.load(devHtml);
-    doc("link[rel=stylesheet]").attr("href", assets.resolve(`bundle.css`));
-    const mainScripts = [
-        // this is needed to avoid hitting https://github.com/facebook/regenerator/issues/378
-        // which prevents the whole bundle to load, as our CSP headers don't allow unsafe-eval
-        // and I preferred this over disabling strict mode for the whole bundle
-        `<script type="text/javascript">window.regeneratorRuntime = undefined;</script>`,
-        `<script type="text/javascript" src="${assets.resolve(`bundle.js`)}"></script>`,
-        `<script type="text/javascript">bundle.main(document.body);</script>`
-    ];
-    doc("script#main").replaceWith(mainScripts.join(""));
-    return doc.html();
-}
-
-function createReplaceUrlPlugin(assets) {
-    const replacements = {};
-    for (const [key, value] of assets) {
-        replacements[key] = value;
+export async function loadLane(lane) {
+    const config = JSON.parse(await fs.readFile(path.join(root, "config/lanes", `${lane}.json`), "utf8"));
+    validateConfig(config.links);
+    for (const id of config.apple?.app_ids ?? []) {
+        if (!/^[A-Z0-9]{10}\.[A-Za-z0-9-]+(\.[A-Za-z0-9-]+)+$/.test(id)) throw new Error(`apple.app_ids: ${id} is not <TEAM>.<bundle id>`);
     }
-    return replace(replacements);
+    for (const [platform, url] of Object.entries(config.stores ?? {})) {
+        if (url && !url.startsWith("https://")) throw new Error(`stores.${platform} must be an https URL or empty`);
+    }
+    return config;
 }
 
-async function buildJs(mainFile, assets, extraFiles = []) {
-    // compile down to whatever IE 11 needs
-    const babelPlugin = babel.babel({
-        babelHelpers: 'bundled',
-        exclude: 'node_modules/**',
-        presets: [
-            [
-                "@babel/preset-env",
-                {
-                    useBuiltIns: "entry",
-                    corejs: "3",
-                    targets: "IE 11",
-                }
-            ]
-        ]
-    });
-    // create js bundle
-    const rollupConfig = {
-        // important the extraFiles come first,
-        // so polyfills are available in the global scope
-        // if needed for the mainfile
-        input: extraFiles.concat(mainFile),
-        plugins: [multi(), commonjs(), nodeResolve(), createReplaceUrlPlugin(assets), babelPlugin, terser()]
+/** §6.1: the canonical kinds, reserved ones included (Apple's CDN caches the file); nothing else. */
+export function appleAppSiteAssociation(config) {
+    return {
+        applinks: {
+            details: [{
+                appIDs: config.apple?.app_ids ?? [],
+                components: CANONICAL_KINDS.map(kind => ({ "/": `/${kind}/*` })),
+            }],
+        },
     };
-    const bundle = await rollup(rollupConfig);
-    const {output} = await bundle.generate({
-        format: 'iife',
-        name: `bundle`
-    });
-    const code = output[0].code;
-    return code;
 }
 
-function buildAppleAssociatedAppsFile(clients) {
-    const appIds = clients.map(c => c.appleAssociatedAppId).flat().filter(id => !!id);
-    return JSON.stringify({
-        "applinks": {
-            "details": [
-                {
-                    appIDs: appIds,
-                    components: [
-                        {
-                            "#": "/*",
-                            "comment": "Only open urls with a fragment, so you can still create links"
-                        }
-                    ]
-                }
-            ]
-        }
-    });
+/** §6.3: App Links, once Android has a package and signing certificates (B1, B3). */
+export function assetLinks(config) {
+    const android = config.android ?? {};
+    if (!android.package_name) return [];
+    return [{
+        relation: ["delegate_permission/common.handle_all_urls"],
+        target: { namespace: "android_app", package_name: android.package_name, sha256_cert_fingerprints: android.sha256_cert_fingerprints ?? [] },
+    }];
 }
 
-async function buildCss(entryPath, targetDir, assets) {
-    entryPath = path.join(projectDir, entryPath);
-    const assetUrlMapper = ({absolutePath}) => {
-        const relPath = absolutePath.slice(projectDir.length);
-        return assets.resolve(path.join(targetDir, relPath));
-    };
-
-    const preCss = await fs.readFile(entryPath, "utf8");
-    const options = [
-        postcssImport,
-        cssvariables(),
-        autoprefixer({overrideBrowserslist: ["IE 11"], grid: "no-autoplace"}),
-        flexbugsFixes(),
-        postcssUrl({url: assetUrlMapper}),
-    ];
-    const cssBundler = postcss(options);
-    const result = await cssBundler.process(preCss, {from: entryPath});
-    return result.css;
+/** What the page reads: only the link config, store links and the B8 notice switch. */
+export function pageConfig(config) {
+    return { lane: config.lane, links: config.links, stores: config.stores ?? {}, owner_only_notice: config.owner_only_notice === true };
 }
 
-async function removeDirIfExists(targetDir) {
-    try {
-        await fs.rmdir(targetDir, {recursive: true});
-    } catch (err) {
-        if (err.code !== "ENOENT") {
-            throw err;
-        }
-    }
+export async function build(lane, outDir) {
+    const config = await loadLane(lane);
+    await fs.rm(outDir, { recursive: true, force: true });
+    await fs.mkdir(path.join(outDir, ".well-known"), { recursive: true });
+    for (const file of PAGE_FILES) await fs.copyFile(path.join(root, "landing", file), path.join(outDir, file));
+    await fs.writeFile(path.join(outDir, "config.js"),
+        `// Generated by scripts/build.js from config/lanes/${lane}.json. Do not edit.\nexport default ${JSON.stringify(pageConfig(config), null, 2)};\n`);
+    await fs.writeFile(path.join(outDir, ".well-known/apple-app-site-association"), JSON.stringify(appleAppSiteAssociation(config), null, 2) + "\n");
+    await fs.writeFile(path.join(outDir, ".well-known/assetlinks.json"), JSON.stringify(assetLinks(config), null, 2) + "\n");
+    return { config, files: [...PAGE_FILES, "config.js", ".well-known/apple-app-site-association", ".well-known/assetlinks.json"] };
 }
 
-async function copyFolder(srcRoot, dstRoot, filter = null, assets = null) {
-    assets = assets || new AssetMap(dstRoot);
-    const dirEnts = await fs.readdir(srcRoot, {withFileTypes: true});
-    for (const dirEnt of dirEnts) {
-        const dstPath = path.join(dstRoot, dirEnt.name);
-        const srcPath = path.join(srcRoot, dirEnt.name);
-        if (dirEnt.isDirectory()) {
-            await fs.mkdir(dstPath);
-            await copyFolder(srcPath, dstPath, filter, assets);
-        } else if ((dirEnt.isFile() || dirEnt.isSymbolicLink()) && (!filter || filter(srcPath))) {
-            const content = await fs.readFile(srcPath);
-            await assets.write(dstPath, content);
-        }
-    }
-    return assets;
+if (process.argv[1] === fileURLToPath(import.meta.url)) {
+    const args = process.argv.slice(2);
+    const lane = args.includes("--lane") ? args[args.indexOf("--lane") + 1] : "dev";
+    const out = args.includes("--out") ? path.resolve(args[args.indexOf("--out") + 1]) : path.join(root, "build", lane);
+    const { files } = await build(lane, out);
+    console.log(`built the ${lane} landing page into ${path.relative(root, out) || "."}: ${files.join(", ")}`);
 }
-
-function contentHash(str) {
-    var hasher = new xxhash.h32(0);
-    hasher.update(str);
-    return hasher.digest();
-}
-
-class AssetMap {
-    constructor(targetDir) {
-        // remove last / if any, so substr in create works well
-        this._targetDir = path.resolve(targetDir);
-        this._assets = new Map();
-        // hashes for unhashed resources so changes in these resources also contribute to the hashForAll
-        this._unhashedHashes = [];
-    }
-
-    _toRelPath(resourcePath) {
-        let relPath = resourcePath;
-        if (path.isAbsolute(resourcePath)) {
-            if (!resourcePath.startsWith(this._targetDir)) {
-                throw new Error(`absolute path ${resourcePath} that is not within target dir ${this._targetDir}`);
-            }
-            relPath = resourcePath.slice(this._targetDir.length + 1); // + 1 for the /
-        }
-        return relPath;
-    }
-
-    _create(resourcePath, content) {
-        const relPath = this._toRelPath(resourcePath);
-        const hash = contentHash(Buffer.from(content));
-        const dir = path.dirname(relPath);
-        const extname = path.extname(relPath);
-        const basename = path.basename(relPath, extname);
-        const dstRelPath = path.join(dir, `${basename}-${hash}${extname}`);
-        this._assets.set(relPath, dstRelPath);
-        return dstRelPath;
-    }
-
-    async write(resourcePath, content) {
-        const relPath = this._create(resourcePath, content);
-        const fullPath = path.join(this.directory, relPath);
-        if (typeof content === "string") {
-            await fs.writeFile(fullPath, content, "utf8");
-        } else {
-            await fs.writeFile(fullPath, content);
-        }
-        return relPath;
-    }
-
-    async writeUnhashed(resourcePath, content) {
-        const relPath = this._toRelPath(resourcePath);
-        this._assets.set(relPath, relPath);
-        const fullPath = path.join(this.directory, relPath);
-        if (typeof content === "string") {
-            await fs.writeFile(fullPath, content, "utf8");
-        } else {
-            await fs.writeFile(fullPath, content);
-        }
-        return relPath;
-    }
-
-    get directory() {
-        return this._targetDir;
-    }
-
-    resolve(resourcePath) {
-        const relPath = this._toRelPath(resourcePath);
-        const result = this._assets.get(relPath);
-        if (!result) {
-            throw new Error(`unknown path: ${relPath}, only know ${Array.from(this._assets.keys()).join(", ")}`);
-        }
-        return result;
-    }
-
-    addSubMap(assetMap) {
-        if (!assetMap.directory.startsWith(this.directory)) {
-            throw new Error(`map directory doesn't start with this directory: ${assetMap.directory} ${this.directory}`);
-        }
-        const relSubRoot = assetMap.directory.slice(this.directory.length + 1);
-        for (const [key, value] of assetMap._assets.entries()) {
-            this._assets.set(path.join(relSubRoot, key), path.join(relSubRoot, value));
-        }
-    }
-
-    [Symbol.iterator]() {
-        return this._assets.entries();
-    }
-
-    isUnhashed(relPath) {
-        const resolvedPath = this._assets.get(relPath);
-        if (!resolvedPath) {
-            throw new Error("Unknown asset: " + relPath);
-        }
-        return relPath === resolvedPath;
-    }
-
-    get size() {
-        return this._assets.size;
-    }
-
-    has(relPath) {
-        return this._assets.has(relPath);
-    }
-
-    hashForAll() {
-        const globalHashAssets = Array.from(this).map(([, resolved]) => resolved);
-        globalHashAssets.push(...this._unhashedHashes);
-        globalHashAssets.sort();
-        return contentHash(globalHashAssets.join(","));
-    }
-
-    addToHashForAll(resourcePath, content) {
-        this._unhashedHashes.push(`${resourcePath}-${contentHash(Buffer.from(content))}`);
-    }
-}
-
-build().catch(err => console.error(err));

@@ -7,8 +7,10 @@
     "node": ">= 14.0.0"
   },
   "scripts": {
-    "start": "node scripts/serve-local.js",
-    "build": "node scripts/build.js"
+    "build": "node scripts/build.js --lane dev",
+    "start": "node scripts/serve-local.js --lane dev",
+    "test": "node scripts/test-links.mjs",
+    "check": "node scripts/check-landing.mjs --lane dev"
   },
   "devDependencies": {
     "@babel/core": "^7.11.1",
