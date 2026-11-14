@@ -260,7 +260,7 @@
 
 - 共 137 条：生成 19 条，解析 118 条。解析的 118 条里，规范写法和 scheme 写法（`p-`）37 条，应当拒绝、判为“不是我们的”或别的发布线的（`x-`）65 条，旧写法（`l-`，只剩 matrix.to）7 条，旧写法里应当拒绝的（`lx-`）9 条。每条都附一句说明。
 - 第一版 75 条；C1 安全评审第二轮补了 37 条（把 C1 实现时自己定的规则写回本规格和向量，再加上 ID 语法收紧、长度上限、凭据、`#/user/` 写法），见 §12 第二轮。
-- 用了三份**测试用的、按构建划分**的配置，不代表真实部署：`prod`（iOS 和 macOS 的 scheme 是 `zymi`）；`dev`（`server_name` 假定和 prod 一样是 `zymi.app`，未确认，见评审 U6；iOS 和 macOS 的 scheme 都是 `zymi-dev`）；`local`（zim Debug 连本地 E2E 栈，`localhost:8448`，`zymi-debug`）。scheme 按 §5.3 的表。解析器接受配置里列出的每一个 scheme。
+- 用了三份**测试用的、按构建划分**的配置，不代表真实部署：`prod`（iOS 和 macOS 的 scheme 是 `zymi`）；`dev`（向量里的 `server_name` 用 `zymi.app`，**只是测试值**；真实 dev 线 11-13 实测是 `dev.zymi.app`（U6：dev 上 `POST /v1/matrix/session` 给的 Matrix 用户 ID 都以 `:dev.zymi.app` 结尾），部署配置 `config/lanes/dev.json` 用的是实测值；iOS 和 macOS 的 scheme 都是 `zymi-dev`）；`local`（zim Debug 连本地 E2E 栈，`localhost:8448`，`zymi-debug`）。scheme 按 §5.3 的表。解析器接受配置里列出的每一个 scheme。
 - 覆盖到的情况：
   - v12 和旧写法两种房间 ID；带端口的 server name（含端口不一致）；非默认端口；`<scheme>://open` 空路径；别的构建的 scheme；标准 base64 的事件 ID；UTF-8 别名；含 `/` 的别名。
   - 编码过的 `:`；点段和 `%2e%2e`；反斜杠；空段；大写的 kind；结尾斜杠；host 的大小写和默认端口。
