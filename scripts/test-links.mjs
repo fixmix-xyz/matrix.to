@@ -20,6 +20,9 @@ const jsonOut = args.includes("--json") ? args[args.indexOf("--json") + 1] : nul
 const MUTATIONS = {
     "empty-segment": ['if (segments.some(s => s === "")) fail("malformed");', ""],
     "no-kind-check": ["const id = ids.zymi(decode(rest[0]));", "const id = decode(rest[0]);"],
+    // zymi-core links::own_scheme (zymi-services 56c16ec6): the reserved table has mailto/tel/sms/maps, and a scheme is 2+ characters.
+    "reserved-short": [', "mailto", "tel", "sms", "maps"];', '];'],
+    "one-char-scheme": ["/^[a-z][a-z0-9+.-]+$/", "/^[a-z][a-z0-9+.-]*$/"],
 };
 
 async function loadLinks() {
@@ -94,6 +97,16 @@ for (const vector of vectors.build) {
         const back = links.linkParse(url, config);
         record("roundtrip", vector, same(back.link, vector.link), back, form);
     }
+}
+
+// Own scheme (core links::own_scheme): a config claiming any of these is refused; the lanes' own pass.
+for (const [scheme, ok] of [["zymi-dev", true], ["zy", true], ["mailto", false], ["tel", false], ["sms", false], ["maps", false],
+                            ["z", false], ["http", false], ["matrix", false], ["zymix", false], ["unseal", false]]) {
+    const config = laneConfig("dev");
+    config.schemes = { ...config.schemes, macos: scheme };
+    let refused = false;
+    try { links.validateConfig(config); } catch { refused = true; }
+    record("own-scheme", { id: scheme, expect: ok ? "accepted" : "refused" }, refused !== ok, refused ? "refused" : "accepted");
 }
 
 const counts = { parse: vectors.parse.length, build: vectors.build.length, total: vectors.parse.length + vectors.build.length };

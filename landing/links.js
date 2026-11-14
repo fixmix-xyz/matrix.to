@@ -26,7 +26,7 @@ const MAX_MATRIX_ID_BYTES = 255;
 const MAX_ZYMI_ID_BYTES = 128;
 
 /** Schemes a config may never claim: the web's, Matrix's own and the dangerous ones. */
-const RESERVED_SCHEMES = ["http", "https", "ws", "wss", "ftp", "file", "matrix", "javascript", "data", "blob", "about"];
+const RESERVED_SCHEMES = ["http", "https", "ws", "wss", "ftp", "file", "matrix", "javascript", "data", "blob", "about", "mailto", "tel", "sms", "maps"];
 /** Other products' schemes (§5.3, B1). */
 const FOREIGN_SCHEMES = ["zymix", "zymixdemo", "siuper", "unseal"];
 const PLATFORMS = ["ios", "macos", "android", "windows"];
@@ -152,7 +152,7 @@ function isSerialisedHost(host) {
     return !url.username && !url.password && url.pathname === "/" && !url.search && !url.hash && authority(url) === host;
 }
 
-const isScheme = scheme => /^[a-z][a-z0-9+.-]*$/.test(scheme);
+const isScheme = scheme => /^[a-z][a-z0-9+.-]+$/.test(scheme);
 const ownScheme = scheme => isScheme(scheme) && !RESERVED_SCHEMES.includes(scheme) && !FOREIGN_SCHEMES.includes(scheme);
 
 function configError(message) {
