@@ -17,7 +17,7 @@
 | # | 决定 | 默认值 | 推翻后受影响的任务 |
 |---|---|---|---|
 | B1 | 范围 | **负责人已定（11-13）：只做 Zymi（zim 和 zymi-ios）。** 负责人原话：「这个是新的产品 zymi，只要它的」「Matrix用zymi:」。Unseal 和 ZYMIX 不在范围内，它们的旧写法（旧落地页 `dev.unseal.chat/…/to-share/`、`zymix://unseal/…`、`zymixdemo://unseal/…`）不再支持；Matrix 的用户、房间、别名和消息一律用 zymi 写法（`https://<链接域名>/…` 和 `<scheme>://open/{u\|r\|roomid}/…[/e/…]`，不加新语法），`matrix:` URI 不再读。旧链接只认 matrix.to（D3）。Android 和 Windows 先挂起 | A1、W1 |
-| B2 | 链接域名 | **全部做成配置项**，代码里不写死。示例值：`to.zymi.app`（prod）、`to-dev.zymi.app`、`to-testing.zymi.app` | P2、P3、Z2、S2、Z4、S4 |
+| B2 | 链接域名 | **负责人已定（11-17，先用）：** `to.zymi.app`（prod）、`to-dev.zymi.app`（dev）；Debug 连本地栈用 `to-local.zymi.test`（只给 E2E）。仍然**全部做成配置项**（zim 在 project.yml 的 `ZimLinkLanes`），代码里不写死。testing 线待定 | P2、P3、Z2、S2、Z4、S4 |
 | B3 | 生产环境的 Team ID、Bundle ID 和签名指纹 | **没有默认值，留空** | 被它阻塞：P2（AASA 和 assetlinks 的内容）、Z4、S4、落地页的商店链接、Smart App Banner |
 | B3s | scheme | **负责人已定（11-13）：产品的 scheme 一律是 zymi 家族，不再用 zim。** 规则 `zymi[-<发布线>]`：prod 是 `zymi`，dev 是 `zymi-dev`，testing 是 `zymi-testing`；Debug 构建（连本地栈）是 `zymi-debug`。规范形式 `zymi://open/<路径>`。全表见 §5.3。`zim` 退役，不进旧写法（§12 第三轮）。“dev 线用 `zymi-dev` 而不是 `zymi`”是协调者按这条规则定的，负责人可推翻 | Z1、§5.3、§6.1、§6.2、向量 |
 | B4 | zim 有几条发布线 | **对外只有 dev 一条**（Release 连 dev 网关）。Debug 构建连本地 E2E 栈，`server_name` 不同（`localhost:8448`），所以它有自己的一份配置：发布线 `local`，scheme `zymi-debug`，host 用 `to-local.zymi.test`（只给 E2E 用）。E2E 靠 `zymi-debug` 定位到被测的那一份 App。每个构建只注册自己那一个 scheme，分享扩展也用它交接（Debug 是 `zymi-debug://share`，Release 是 `zymi-dev://share`；scheme 见 B3s） | Z1、§5.3、§6.2 |
@@ -31,7 +31,7 @@
 |---|---|---|
 | D1 | **规范链接放在 URL 路径里，不放在片段（`#/…`）里。** 挂在专用的链接域名上，每条发布线一个，例如 `https://<LINK_HOST>/roomid/<id>`、`/u/<id>`、`/task/<id>`。自定义 scheme 写成 `<scheme>://open/<同一路径>`，只用来从落地页把链接交给 App。 | API 35 以下的 Android 在 App Links 里**匹配不了片段**（片段匹配要到 API 35 的 `uri-relative-filter-group` 才有）。服务端看得到路径，才能用边缘函数返回 404、做预览卡片。聊天消息里只放行 https 链接，自定义 scheme 会被丢掉（`IMChatMac/Message.swift:396-399`）。 |
 | D2 | **语法只有一份，配一份共用的测试向量。** 权威副本是本仓库的 `fixtures/links/vectors.json`。zim 和 zymi-ios 由 **zymi-core** 负责生成和解析链接，做成不依赖登录状态的自由函数。IMKit **不自带语法**，只提供两个注入点：链接生成器和链接打开器。每个 App 只有**一个** `LinkRouter`，所有打开 URL 的地方都先经过它。 | IMKit 和 ZYMIX 都不依赖 zymi-core。“一份向量 + 多份实现”这种做法已有先例：`zymi-services/fixtures/sse-vectors.json` 加 `scripts/sse-parity.sh`。 |
-| D3 | **旧链接只认 matrix.to。** 解析器认 `https://matrix.to/#/…`（这个**旧前缀写成配置里的白名单**，别的 host 上出现同样的片段写法也不认），用于 @ 提及的 pill 和已经发出去的链接。旧落地页、`zymix://unseal/…` 和 `matrix:` URI 都不认，判 `not_ours`（B1）。**@ 提及的 pill 继续用 matrix.to 的片段写法。** 推出顺序是先发解析器，后发生成器。 | 两端判断 pill 的代码都不看域名（`MatrixHTML.swift:119-140`，`MatrixHtml.kt:137-157`）。dev 的 homeserver 关了联邦、注册和访客（`homeserver.yaml.tmpl:34-43`），用 matrix.to 写法没有坏处。 |
+| D3 | **旧链接只认 matrix.to。** 解析器认 `https://matrix.to/#/…`（这个**旧前缀写成配置里的白名单**，别的 host 上出现同样的片段写法也不认），用于 @ 提及的 pill 和已经发出去的链接。旧落地页、`zymix://unseal/…` 和 `matrix:` URI 都不认，判 `not_ours`（B1）。**@ 提及的 pill 也改用规范链接 `/u/<user>`（负责人 11-17 推翻原定，见 §12 第七轮）**；matrix.to 只作为旧写法继续读。 推出顺序是先发解析器，后发生成器。 | 两端判断 pill 的代码都不看域名（`MatrixHTML.swift:119-140`，`MatrixHtml.kt:137-157`）。dev 的 homeserver 关了联邦、注册和访客（`homeserver.yaml.tmpl:34-43`），用 matrix.to 写法没有坏处。 |
 | D4 | **安全基线。** 落地页不做预览，也不请求任何 homeserver。`client` 和 `web-instance[…]` 两个参数一律忽略。落地页只跳到自己拼出来的地址。会改状态的动作一律先在 App 内确认。服务器名检查只用在**用户 ID、别名和 v12 之前的房间 ID** 上；房间和事件是不是自家的，看链接的 host 属于哪条发布线。没有权限和不存在对外显示同一句话。链接里不放任何令牌，v1 只预留 `/invite/` 路径，不实现。 | matrix.to 会按 `via` 去请求任意服务器拉预览（`src/preview/PreviewViewModel.js:46-59`）。ZYMIX 打开链接就直接加入房间（`../matrix.to/src/open/clients/Zymix.js:17-19`）。v12 的房间 ID 和 v3 之后的事件 ID 都没有服务器部分。 |
 | D5 | **各平台做法。** iOS 和 macOS 用 universal links（AASA 按路径匹配）加 scheme；安卓用 App Links（`assetlinks.json` 加 `autoVerify`）加 scheme；Windows 先注册 scheme，用 Electron 的话就是单实例转发；安卓和 Windows 按 B1 挂起。App 里点到自家链接，**由 `LinkRouter` 拦下来**，不交给系统。 | 现在 IMKit 和 zim 一共有十几个地方会把 https 链接直接交给系统（§5.2）。 |
 
@@ -699,3 +699,15 @@ lane = {
 | L2-S3 | 采纳 | §6.5：页面名只从白名单映射，绝不回显路径段；P1 加检查 |
 | L2-S4 | 采纳 | §6.5：不承诺“登录后会自动打开”，换成对所有人显示的中性说法 |
 | L2-S5 | 采纳 | §6.5 和 §6.2 统一成“一般只有 Safari 会走，待在签名构建上确认（Z4）” |
+
+### 第七轮：分享链接全局统一（负责人 11-17）
+
+负责人原话：「把matrix.to的分享链接都得换成我们deeplink的sharelink，全局统一，组件可配置这个share域名」；@ 提及「要换」；域名「先用这2个」。
+
+| 项 | 处理 | 说明 |
+|---|---|---|
+| D3 | 推翻一半 | 旧写法仍只认 matrix.to（解析不变）；**生成**一律用规范链接，@ 提及的 pill 和名片（`ChatContact`）也是 `/u/<user>`。代价：不认这个 host 的客户端（Element、已装的旧版 ZIM 和 Android）把新 pill 显示成普通链接；通知靠 `m.mentions`，不受影响。生成不了的（别的服务器的用户，`foreign_server`）照旧发 matrix.to |
+| B2 | 已定（先用） | 见 §0.1 |
+| I1a | 改成一个双向注入点 | IMKit `ChatLinkBuilder`（IMCore），宿主启动时 `ChatShareLinks.install` 一次：`link(forMatrixTo:)` 把 IMKit 生成的 matrix.to 换成宿主的链接，`matrixTo(for:)` 把宿主的链接读回 matrix.to，供识别 pill 和名片。IMKit 里所有生成点（房间、空间、消息、资料页、pill、名片）和识别点（`MatrixHTML`、富文本编辑器、`ChatContact`）都经过它；不装时行为不变。`MatrixConfiguration.shareLinks`（旧落地页的片段写法）保留，对设置它的客户端优先。`ChatLinkOpener` 不在本轮 |
+| Z2 | 实现 | zim `ZimShareLinks`：zymi-core `linkParse`（matrix.to）→ `linkBuild`，反向 `linkParse` → matrix.to。Debug `ZIM_E2E_SHARE_LINKS=matrixto` 不装（对照）。E2E：`MessageShareTests` L1/L5–L8、`SpaceSettingsTests` A12、`MentionTests` M2 |
+| S2 | 待定 | zymi-ios 先要合 `feat/zymi-core-sign-in` 和 `feat/zymi-deeplink-core`（接上 ZymiCore 的 links），再照 zim 装 builder |
