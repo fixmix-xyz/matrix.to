@@ -28,6 +28,7 @@ const TEXT = {
         home: "这里是 Zymi 的分享链接。打开别人发给你的链接，会在 Zymi App 里接着打开。",
         intro: type => `这是一个 Zymi 的${type}链接`,
         types: { user: "用户", room: "聊天室", message: "消息", task: "任务", goal: "目标", agent: "智能体", artifact: "作品", circle: "圈子" },
+        tagline: "你的 AI 伙伴，一起聊天、一起做事",
         open: "在 Zymi 中打开",
         openOn: { ios: "在 iPhone 或 iPad 上的 Zymi 中打开", macos: "在 Mac 上的 Zymi 中打开" },
         ownerOnly: "只有创建它的账号能打开。",
@@ -39,6 +40,8 @@ const TEXT = {
         invalid: "链接无效",
         unknownKind: "打不开这个链接，可能需要更新 App",
         reserved: "请更新 App",
+        invalidHint: "链接可能不完整，请让对方重新分享一次。",
+        updateHint: "把 Zymi 更新到最新版本，再打开这个链接试试。",
         language: "English",
     },
     en: {
@@ -46,6 +49,7 @@ const TEXT = {
         home: "This is where Zymi's share links live. A link someone sends you opens in the Zymi app.",
         intro: type => `This is a Zymi ${type} link`,
         types: { user: "user", room: "chat room", message: "message", task: "task", goal: "goal", agent: "agent", artifact: "artifact", circle: "circle" },
+        tagline: "Your AI companion, to chat and get things done",
         open: "Open in Zymi",
         openOn: { ios: "Open in Zymi on iPhone or iPad", macos: "Open in Zymi on Mac" },
         ownerOnly: "Only the account that created it can open it.",
@@ -57,6 +61,8 @@ const TEXT = {
         invalid: "This link isn't valid",
         unknownKind: "This link can't be opened. You may need to update the app.",
         reserved: "Please update the app",
+        invalidHint: "The link may be incomplete. Ask whoever shared it to send it again.",
+        updateHint: "Update Zymi to the latest version, then open this link again.",
         language: "中文",
     },
 };
@@ -100,19 +106,38 @@ function element(tag, attributes = {}, text) {
     return node;
 }
 
-function render(state, language) {
+/** Zymi the cloud (index.html's template), once: its face follows body[data-mood] (landing.css). */
+function mascot() {
+    const hero = element("div", { class: "hero" });
+    hero.append(element("div", { class: "halo" }));
+    const template = document.getElementById("zymi-mascot");
+    if (template) hero.append(template.content.cloneNode(true));
+    return hero;
+}
+
+/** The face for what the page says: glad for a link, curious at home, surprised when it can't open. */
+const MOOD = { home: "neutral", link: "familiar" };
+
+function render(state, language, again = false) {
     const t = TEXT[language];
     document.documentElement.lang = language === "zh" ? "zh-Hans" : "en";
     const main = document.querySelector("main");
     main.replaceChildren();
-    main.append(element("p", { class: "brand" }, t.title));
+    // Switching language redraws in place: the entrance plays once, on arrival.
+    if (again) document.body.dataset.settled = "";
+    const top = element("header", { class: "top" });
+    top.append(element("p", { class: "wordmark" }, "zymi"));
+    const toggle = element("button", { type: "button", class: "language" }, t.language);
+    toggle.addEventListener("click", () => render(state, language === "zh" ? "en" : "zh", true));
+    top.append(toggle);
+    main.append(top, mascot());
     const { verdict } = state;
     let status = "home";
     if (verdict.link) {
         status = "link";
         const type = linkType(verdict.link);
         main.append(element("h1", {}, t.intro(t.types[type])));
-        if (ZYMI_KINDS.includes(verdict.link.kind) && site.owner_only_notice) main.append(element("p", {}, t.ownerOnly));
+        if (ZYMI_KINDS.includes(verdict.link.kind) && site.owner_only_notice) main.append(element("p", { class: "lead" }, t.ownerOnly));
         const offers = [];
         for (const platform of platforms()) {
             const handoff = linkHandoff(verdict.link, site.links, platform);
@@ -125,29 +150,32 @@ function render(state, language) {
                 actions.append(element("a", { class: "button", href: offer.url, "data-platform": offer.platform }, label));
             }
             main.append(actions);
-            main.append(element("p", { class: "note" }, t.signIn));
-            main.append(element("p", { class: "note" }, t.update));
         } else {
-            main.append(element("p", {}, t.noHandoff));
+            main.append(element("p", { class: "lead" }, t.noHandoff));
         }
+        const notes = element("div", { class: "notes" });
+        if (offers.length) notes.append(element("p", { class: "note" }, t.signIn), element("p", { class: "note" }, t.update));
+        notes.append(element("p", { class: "note" }, t.noApp));
         const stores = Object.entries(site.stores || {}).filter(([platform, url]) => url && platforms().includes(platform));
-        const install = element("p", { class: "note" }, t.noApp);
-        main.append(install);
         for (const [platform, url] of stores) {
-            main.append(element("a", { class: "store", href: url, "data-store": platform }, t.download[platform]));
+            notes.append(element("a", { class: "store", href: url, "data-store": platform }, t.download[platform]));
         }
+        main.append(notes);
     } else if (verdict.reject) {
         status = verdict.reject;
         const message = verdict.reject === "unknown_kind" ? t.unknownKind : verdict.reject === "reserved" ? t.reserved : t.invalid;
         main.append(element("h1", {}, message));
+        main.append(element("p", { class: "lead" }, message === t.invalid ? t.invalidHint : t.updateHint));
     } else {
         main.append(element("h1", {}, t.home));
+        main.append(element("p", { class: "lead" }, t.tagline));
     }
     document.body.dataset.status = status;
-    const toggle = element("button", { type: "button", class: "language" }, t.language);
-    toggle.addEventListener("click", () => render(state, language === "zh" ? "en" : "zh"));
-    main.append(toggle);
+    document.body.dataset.mood = MOOD[status] ?? "adventurous";
 }
+
+// iOS Safari gives :active (the mascot's squash, the button's press) only to a page that listens for touches.
+document.addEventListener("touchstart", () => {}, { passive: true });
 
 const state = read();
 if (state.redirect) {

@@ -1,0 +1,43 @@
+{
+  "applinks": {
+    "details": [
+      {
+        "appIDs": [
+          "VZZQ2Q6734.ai.pagepeek.app.zymi.dev"
+        ],
+        "components": [
+          {
+            "/": "/u/*"
+          },
+          {
+            "/": "/r/*"
+          },
+          {
+            "/": "/roomid/*"
+          },
+          {
+            "/": "/task/*"
+          },
+          {
+            "/": "/goal/*"
+          },
+          {
+            "/": "/agent/*"
+          },
+          {
+            "/": "/artifact/*"
+          },
+          {
+            "/": "/circle/*"
+          },
+          {
+            "/": "/invite/*"
+          },
+          {
+            "/": "/team/*"
+          }
+        ]
+      }
+    ]
+  }
+}
