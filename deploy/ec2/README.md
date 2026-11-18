@@ -17,7 +17,8 @@ no command here can touch the `zymi-dev` stack.
 ## AWS resources
 
 Account 848776073113 (profile `zymix-production`), region `eu-west-2`, tagged `Project=zymi`, `Environment=dev`,
-`ManagedBy=manual`, like the rest of the dev host.
+`ManagedBy=manual` (and `map-migrated=migQJ7XN3O8EO` on the target group), like the rest of the dev host. Created
+2026-11-18; the IDs are in the release directory's `aws-resources.json` on the host.
 
 | Resource | Name | Notes |
 | --- | --- | --- |
