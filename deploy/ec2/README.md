@@ -68,10 +68,11 @@ and run the same `up -d --wait`.
 From anywhere:
 
 - `curl -sI https://to-dev.zymi.app/` → 200, `text/html`, with the page's CSP and HSTS headers.
-- `curl -sI https://to-dev.zymi.app/task/a%2Fb` → **404 with the CSP header**. The ALB's own 404 has no CSP, so
-  the header proves the encoded path reached the function.
-- `curl -sI 'https://to-dev.zymi.app/r/a%2Fb:dev.zymi.app'` → 200 (the dev lane's server name; `:zymi.app` is
-  another server and 404s).
+- `curl -sI https://to-dev.zymi.app/task/a%2Fb` → 404 with the CSP header. The ALB's own 404 has no CSP, so the
+  header proves the listener rule sends the name to the page.
+- `curl -sI 'https://to-dev.zymi.app/r/a%2Fb:dev.zymi.app'` → **200**, while `/r/a/b:dev.zymi.app` → 404. Only an
+  undecoded `%2F` makes that room alias valid, so this pair proves the path arrived as sent. (`:zymi.app` is
+  another server and 404s.)
 - `curl -s https://to-dev.zymi.app/.well-known/apple-app-site-association` → 200, `application/json`, no redirect,
   `appIDs` from `config/lanes/dev.json`.
 - `aws elbv2 describe-target-health` on `zymi-dev-links` → `healthy`; `https://dev.zymi.app/ready` and
