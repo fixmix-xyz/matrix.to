@@ -1,0 +1,19 @@
+# The dev lane's link landing page (to-dev.zymi.app) on the Zymi EC2 dev host. It is its own Compose project, so
+# no command here can touch the zymi-dev stack. See deploy/ec2/README.md.
+#
+#   sudo docker compose --env-file /srv/zymi/links-dev/compose.env -f deploy/ec2/compose.yaml up -d --wait
+name: ${LINKS_COMPOSE_PROJECT:?Set LINKS_COMPOSE_PROJECT, for example zymi-links-dev}
+
+services:
+  landing:
+    image: ${LINKS_IMAGE:?Set LINKS_IMAGE to the image built on the host, for example zymi-links:dev-<short sha>}
+    # Built on the host from a source archive; there is no registry.
+    pull_policy: never
+    restart: unless-stopped
+    read_only: true
+    cap_drop: [ALL]
+    security_opt: [no-new-privileges:true]
+    mem_limit: 128m
+    # The host security group admits this port only from the dev load balancer.
+    ports:
+      - "${LINKS_BIND_HOST:-127.0.0.1}:${LINKS_HTTP_PORT:-8110}:8080"

@@ -1,0 +1,960 @@
+{
+  "lane": "dev",
+  "stamp": "2026-11-18T22-42-06-855Z",
+  "checks": 82,
+  "failed": 0,
+  "skipped": [
+    {
+      "id": "p-agent-scheme",
+      "why": "not an https request"
+    },
+    {
+      "id": "p-scheme",
+      "why": "not an https request"
+    },
+    {
+      "id": "p-goal-scheme",
+      "why": "not an https request"
+    },
+    {
+      "id": "p-artifact-scheme",
+      "why": "not an https request"
+    },
+    {
+      "id": "p-circle-scheme",
+      "why": "not an https request"
+    },
+    {
+      "id": "p-scheme-host-case",
+      "why": "not an https request"
+    },
+    {
+      "id": "p-scheme-ios",
+      "why": "not an https request"
+    },
+    {
+      "id": "p-scheme-debug",
+      "why": "not an https request"
+    },
+    {
+      "id": "p-scheme-alias-event",
+      "why": "not an https request"
+    },
+    {
+      "id": "p-scheme-dev-alias",
+      "why": "not an https request"
+    },
+    {
+      "id": "p-scheme-dev-event",
+      "why": "not an https request"
+    },
+    {
+      "id": "p-scheme-debug-user",
+      "why": "not an https request"
+    },
+    {
+      "id": "p-scheme-debug-alias",
+      "why": "not an https request"
+    },
+    {
+      "id": "p-scheme-debug-event",
+      "why": "not an https request"
+    },
+    {
+      "id": "p-scheme-debug-alias-event",
+      "why": "not an https request"
+    },
+    {
+      "id": "x-credentials",
+      "why": "credentials never reach the server (the browser strips them)"
+    },
+    {
+      "id": "x-other-lane",
+      "why": "not this lane's host (another lane's or nobody's page)"
+    },
+    {
+      "id": "x-other-host",
+      "why": "not this lane's host (another lane's or nobody's page)"
+    },
+    {
+      "id": "x-http",
+      "why": "not an https request"
+    },
+    {
+      "id": "x-scheme-share",
+      "why": "not an https request"
+    },
+    {
+      "id": "x-scheme-connectors",
+      "why": "not an https request"
+    },
+    {
+      "id": "x-scheme-dot-segment",
+      "why": "not an https request"
+    },
+    {
+      "id": "x-scheme-empty",
+      "why": "not an https request"
+    },
+    {
+      "id": "x-other-port",
+      "why": "not this lane's host (another lane's or nobody's page)"
+    },
+    {
+      "id": "x-other-build-scheme",
+      "why": "not an https request"
+    },
+    {
+      "id": "p-scheme-case",
+      "why": "not an https request"
+    },
+    {
+      "id": "x-zim-retired",
+      "why": "not an https request"
+    },
+    {
+      "id": "x-scheme-no-slashes",
+      "why": "not an https request"
+    },
+    {
+      "id": "x-zymix-open",
+      "why": "not an https request"
+    },
+    {
+      "id": "x-zymix-unseal",
+      "why": "not an https request"
+    },
+    {
+      "id": "x-matrix-uri",
+      "why": "not an https request"
+    },
+    {
+      "id": "x-zymixdemo-unseal",
+      "why": "not an https request"
+    },
+    {
+      "id": "x-matrix-uri-upper",
+      "why": "not an https request"
+    },
+    {
+      "id": "x-zymix-upper",
+      "why": "not an https request"
+    },
+    {
+      "id": "x-zymix-credentials",
+      "why": "not an https request"
+    },
+    {
+      "id": "x-too-long-matrix-uri",
+      "why": "not an https request"
+    },
+    {
+      "id": "x-to-share-retired",
+      "why": "not this lane's host (another lane's or nobody's page)"
+    },
+    {
+      "id": "x-debug-on-dev",
+      "why": "not an https request"
+    },
+    {
+      "id": "x-other-lane-scheme",
+      "why": "not an https request"
+    },
+    {
+      "id": "x-other-lane-scheme-share",
+      "why": "not an https request"
+    },
+    {
+      "id": "x-other-lane-scheme-case",
+      "why": "not an https request"
+    },
+    {
+      "id": "x-unknown-zymi-scheme",
+      "why": "not an https request"
+    },
+    {
+      "id": "x-javascript",
+      "why": "not an https request"
+    },
+    {
+      "id": "l-matrixto-user",
+      "why": "not this lane's host (another lane's or nobody's page)"
+    },
+    {
+      "id": "l-matrixto-room-v12",
+      "why": "not this lane's host (another lane's or nobody's page)"
+    },
+    {
+      "id": "l-matrixto-event",
+      "why": "not this lane's host (another lane's or nobody's page)"
+    },
+    {
+      "id": "l-matrixto-alias-raw",
+      "why": "not this lane's host (another lane's or nobody's page)"
+    },
+    {
+      "id": "l-matrixto-alias-encoded",
+      "why": "not this lane's host (another lane's or nobody's page)"
+    },
+    {
+      "id": "l-matrixto-web-instance",
+      "why": "not this lane's host (another lane's or nobody's page)"
+    },
+    {
+      "id": "lx-protocol-relative",
+      "why": "not this lane's host (another lane's or nobody's page)"
+    },
+    {
+      "id": "lx-foreign-user",
+      "why": "not this lane's host (another lane's or nobody's page)"
+    },
+    {
+      "id": "lx-group",
+      "why": "not this lane's host (another lane's or nobody's page)"
+    },
+    {
+      "id": "lx-no-fragment",
+      "why": "not this lane's host (another lane's or nobody's page)"
+    },
+    {
+      "id": "lx-unknown-base",
+      "why": "not this lane's host (another lane's or nobody's page)"
+    },
+    {
+      "id": "x-userinfo-host-trick",
+      "why": "not this lane's host (another lane's or nobody's page)"
+    },
+    {
+      "id": "x-homograph",
+      "why": "not this lane's host (another lane's or nobody's page)"
+    },
+    {
+      "id": "x-other-lane-root",
+      "why": "not this lane's host (another lane's or nobody's page)"
+    },
+    {
+      "id": "x-other-lane-credentials",
+      "why": "not this lane's host (another lane's or nobody's page)"
+    },
+    {
+      "id": "x-too-long-ours",
+      "why": "over-long: the server sees the path, not the whole input"
+    },
+    {
+      "id": "x-too-long-foreign",
+      "why": "not this lane's host (another lane's or nobody's page)"
+    },
+    {
+      "id": "x-too-long-root",
+      "why": "over-long: the server sees the path, not the whole input"
+    },
+    {
+      "id": "x-scheme-credentials",
+      "why": "not an https request"
+    },
+    {
+      "id": "x-scheme-port",
+      "why": "not an https request"
+    },
+    {
+      "id": "x-scheme-empty-segment",
+      "why": "not an https request"
+    },
+    {
+      "id": "lx-credentials",
+      "why": "not this lane's host (another lane's or nobody's page)"
+    },
+    {
+      "id": "lx-credentials-no-fragment",
+      "why": "not this lane's host (another lane's or nobody's page)"
+    },
+    {
+      "id": "lx-other-port",
+      "why": "not this lane's host (another lane's or nobody's page)"
+    },
+    {
+      "id": "lx-event-dots",
+      "why": "not this lane's host (another lane's or nobody's page)"
+    },
+    {
+      "id": "l-matrixto-user-path",
+      "why": "not this lane's host (another lane's or nobody's page)"
+    }
+  ],
+  "results": [
+    {
+      "group": "edge-status",
+      "name": "p-user",
+      "ok": true,
+      "path": "/u/0b1f0c3e-9a52-4b6e-8f1d-2c3b4a5d6e70:zymi.app",
+      "status": 200,
+      "expected": 200
+    },
+    {
+      "group": "edge-status",
+      "name": "p-user-encoded-colon",
+      "ok": true,
+      "path": "/u/0b1f0c3e-9a52-4b6e-8f1d-2c3b4a5d6e70%3Azymi.app",
+      "status": 200,
+      "expected": 200
+    },
+    {
+      "group": "edge-status",
+      "name": "p-user-port",
+      "ok": true,
+      "path": "/u/b4ec4a80-1111-4222-8333-444455556666:localhost:8448",
+      "status": 200,
+      "expected": 200
+    },
+    {
+      "group": "edge-status",
+      "name": "p-room-v12",
+      "ok": true,
+      "path": "/roomid/owtPMO14G1v6Yl9KlRjjDmlKdVC5NbSUPqbiF2Fru30",
+      "status": 200,
+      "expected": 200
+    },
+    {
+      "group": "edge-status",
+      "name": "p-event-old-room",
+      "ok": true,
+      "path": "/roomid/abcDEF123:zymi.app/e/Lh9m3k_ZqXo-2vT8pQ1rW5yA7cE0dF4gH6jK9lM2nB4",
+      "status": 200,
+      "expected": 200
+    },
+    {
+      "group": "edge-status",
+      "name": "p-event-encoded-slash",
+      "ok": true,
+      "path": "/roomid/abcDEF123:zymi.app/e/Ab%2BCd%2FEf",
+      "status": 200,
+      "expected": 200
+    },
+    {
+      "group": "edge-status",
+      "name": "p-alias-utf8",
+      "ok": true,
+      "path": "/r/%E4%BA%A7%E5%93%81%E8%AE%A8%E8%AE%BA:zymi.app",
+      "status": 200,
+      "expected": 200
+    },
+    {
+      "group": "edge-status",
+      "name": "p-alias-event",
+      "ok": true,
+      "path": "/r/team-alpha:zymi.app/e/Lh9m3k_ZqXo-2vT8pQ1rW5yA7cE0dF4gH6jK9lM2nB4",
+      "status": 200,
+      "expected": 200
+    },
+    {
+      "group": "edge-status",
+      "name": "p-alias-slash",
+      "ok": true,
+      "path": "/r/a%2Fb:zymi.app",
+      "status": 200,
+      "expected": 200
+    },
+    {
+      "group": "edge-status",
+      "name": "p-query-hash-ignored",
+      "ok": true,
+      "path": "/task/deck",
+      "status": 200,
+      "expected": 200
+    },
+    {
+      "group": "edge-status",
+      "name": "p-host-case-port",
+      "ok": true,
+      "path": "/task/deck",
+      "status": 200,
+      "expected": 200
+    },
+    {
+      "group": "edge-status",
+      "name": "p-trailing-slash",
+      "ok": true,
+      "path": "/task/deck/",
+      "status": 200,
+      "expected": 200
+    },
+    {
+      "group": "edge-status",
+      "name": "p-agent-case",
+      "ok": true,
+      "path": "/agent/0A4C7B1E-5D2F-4C8A-9B3E-1F2A3B4C5D01",
+      "status": 200,
+      "expected": 200
+    },
+    {
+      "group": "edge-status",
+      "name": "p-dot-segment-collapsed",
+      "ok": true,
+      "path": "/task/deck",
+      "status": 200,
+      "expected": 200
+    },
+    {
+      "group": "edge-status",
+      "name": "p-backslash",
+      "ok": true,
+      "path": "/task/deck",
+      "status": 200,
+      "expected": 200
+    },
+    {
+      "group": "edge-status",
+      "name": "p-goal",
+      "ok": true,
+      "path": "/goal/g_7Kx2",
+      "status": 200,
+      "expected": 200
+    },
+    {
+      "group": "edge-status",
+      "name": "p-artifact",
+      "ok": true,
+      "path": "/artifact/a1",
+      "status": 200,
+      "expected": 200
+    },
+    {
+      "group": "edge-status",
+      "name": "p-circle",
+      "ok": true,
+      "path": "/circle/c1",
+      "status": 200,
+      "expected": 200
+    },
+    {
+      "group": "edge-status",
+      "name": "x-root",
+      "ok": true,
+      "path": "/",
+      "status": 200,
+      "expected": 200
+    },
+    {
+      "group": "edge-status",
+      "name": "x-encoded-dots",
+      "ok": true,
+      "path": "/",
+      "status": 200,
+      "expected": 200
+    },
+    {
+      "group": "edge-status",
+      "name": "x-kind-case",
+      "ok": true,
+      "path": "/U/x:zymi.app",
+      "status": 404,
+      "expected": 404
+    },
+    {
+      "group": "edge-status",
+      "name": "x-settings-pending",
+      "ok": true,
+      "path": "/settings/wallet",
+      "status": 404,
+      "expected": 404
+    },
+    {
+      "group": "edge-status",
+      "name": "x-empty-segment",
+      "ok": true,
+      "path": "//task/deck",
+      "status": 404,
+      "expected": 404
+    },
+    {
+      "group": "edge-status",
+      "name": "x-zymi-encoded-slash",
+      "ok": true,
+      "path": "/task/a%2Fb",
+      "status": 404,
+      "expected": 404
+    },
+    {
+      "group": "edge-status",
+      "name": "x-zymi-non-ascii",
+      "ok": true,
+      "path": "/task/%E4%BD%A0",
+      "status": 404,
+      "expected": 404
+    },
+    {
+      "group": "edge-status",
+      "name": "x-bad-percent",
+      "ok": true,
+      "path": "/task/x%zz",
+      "status": 404,
+      "expected": 404
+    },
+    {
+      "group": "edge-status",
+      "name": "x-nul",
+      "ok": true,
+      "path": "/r/a%00:zymi.app",
+      "status": 404,
+      "expected": 404
+    },
+    {
+      "group": "edge-status",
+      "name": "x-arity",
+      "ok": true,
+      "path": "/task/deck/extra",
+      "status": 404,
+      "expected": 404
+    },
+    {
+      "group": "edge-status",
+      "name": "x-user-no-server",
+      "ok": true,
+      "path": "/u/alice",
+      "status": 404,
+      "expected": 404
+    },
+    {
+      "group": "edge-status",
+      "name": "x-foreign-user",
+      "ok": true,
+      "path": "/u/x:evil.example",
+      "status": 404,
+      "expected": 404
+    },
+    {
+      "group": "edge-status",
+      "name": "x-foreign-alias",
+      "ok": true,
+      "path": "/r/team:evil.example",
+      "status": 404,
+      "expected": 404
+    },
+    {
+      "group": "edge-status",
+      "name": "x-foreign-old-room",
+      "ok": true,
+      "path": "/roomid/abc:evil.example",
+      "status": 404,
+      "expected": 404
+    },
+    {
+      "group": "edge-status",
+      "name": "x-port-mismatch",
+      "ok": true,
+      "path": "/u/b4ec4a80:localhost:9999",
+      "status": 404,
+      "expected": 404
+    },
+    {
+      "group": "edge-status",
+      "name": "x-reserved-invite",
+      "ok": true,
+      "path": "/invite/ABC123",
+      "status": 404,
+      "expected": 404
+    },
+    {
+      "group": "edge-status",
+      "name": "x-kind-before-decode",
+      "ok": true,
+      "path": "/bogus/x%zz",
+      "status": 404,
+      "expected": 404
+    },
+    {
+      "group": "edge-status",
+      "name": "x-reserved-before-decode",
+      "ok": true,
+      "path": "/invite/x%zz",
+      "status": 404,
+      "expected": 404
+    },
+    {
+      "group": "edge-status",
+      "name": "x-kind-encoded",
+      "ok": true,
+      "path": "/%74ask/deck",
+      "status": 404,
+      "expected": 404
+    },
+    {
+      "group": "edge-status",
+      "name": "x-zymi-double-encoded",
+      "ok": true,
+      "path": "/task/a%252Fb",
+      "status": 404,
+      "expected": 404
+    },
+    {
+      "group": "edge-status",
+      "name": "p-alias-double-encoded",
+      "ok": true,
+      "path": "/r/a%252Fb:zymi.app",
+      "status": 200,
+      "expected": 200
+    },
+    {
+      "group": "edge-status",
+      "name": "x-c1-control",
+      "ok": true,
+      "path": "/r/a%C2%85:zymi.app",
+      "status": 404,
+      "expected": 404
+    },
+    {
+      "group": "edge-status",
+      "name": "x-bad-utf8",
+      "ok": true,
+      "path": "/r/a%C0%AF:zymi.app",
+      "status": 404,
+      "expected": 404
+    },
+    {
+      "group": "edge-status",
+      "name": "x-user-dup-sigil",
+      "ok": true,
+      "path": "/u/%40x:zymi.app",
+      "status": 404,
+      "expected": 404
+    },
+    {
+      "group": "edge-status",
+      "name": "x-user-bidi",
+      "ok": true,
+      "path": "/u/a%E2%80%AEb:zymi.app",
+      "status": 404,
+      "expected": 404
+    },
+    {
+      "group": "edge-status",
+      "name": "x-alias-bidi",
+      "ok": true,
+      "path": "/r/a%E2%80%AEb:zymi.app",
+      "status": 404,
+      "expected": 404
+    },
+    {
+      "group": "edge-status",
+      "name": "x-room-opaque-slash",
+      "ok": true,
+      "path": "/roomid/..%2F..:zymi.app",
+      "status": 404,
+      "expected": 404
+    },
+    {
+      "group": "edge-status",
+      "name": "x-event-traversal",
+      "ok": true,
+      "path": "/roomid/abc:zymi.app/e/%2F..%2Fx%3Fy",
+      "status": 404,
+      "expected": 404
+    },
+    {
+      "group": "edge-status",
+      "name": "p-event-dot-collapsed",
+      "ok": true,
+      "path": "/roomid/abc:zymi.app/",
+      "status": 200,
+      "expected": 200
+    },
+    {
+      "group": "edge-status",
+      "name": "p-server-case",
+      "ok": true,
+      "path": "/u/x:ZYMI.APP",
+      "status": 200,
+      "expected": 200
+    },
+    {
+      "group": "edge-status",
+      "name": "x-trailing-slashes",
+      "ok": true,
+      "path": "/task/deck//",
+      "status": 404,
+      "expected": 404
+    },
+    {
+      "group": "http",
+      "name": "/task/deck",
+      "ok": true,
+      "status": 200,
+      "expected": 200
+    },
+    {
+      "group": "http",
+      "name": "/task/a%2Fb",
+      "ok": true,
+      "status": 404,
+      "expected": 404
+    },
+    {
+      "group": "http",
+      "name": "/r/a%2Fb:dev.zymi.app",
+      "ok": true,
+      "status": 200,
+      "expected": 200
+    },
+    {
+      "group": "http",
+      "name": "/invite/ABC123",
+      "ok": true,
+      "status": 404,
+      "expected": 404
+    },
+    {
+      "group": "http",
+      "name": "/U/x:dev.zymi.app",
+      "ok": true,
+      "status": 404,
+      "expected": 404
+    },
+    {
+      "group": "http",
+      "name": "/u/x:evil.example",
+      "ok": true,
+      "status": 404,
+      "expected": 404
+    },
+    {
+      "group": "http",
+      "name": "/roomid/owtPMO14G1v6Yl9KlRjjDmlKdVC5NbSUPqbiF2Fru30/e/Lh9m3k_ZqXo",
+      "ok": true,
+      "status": 200,
+      "expected": 200
+    },
+    {
+      "group": "http",
+      "name": "/",
+      "ok": true,
+      "status": 200,
+      "expected": 200
+    },
+    {
+      "group": "http",
+      "name": "/settings/%E5%AE%98%E6%96%B9%E5%AE%A2%E6%9C%8D",
+      "ok": true,
+      "status": 404,
+      "expected": 404
+    },
+    {
+      "group": "http",
+      "name": "/anything/else",
+      "ok": true,
+      "status": 404,
+      "expected": 404
+    },
+    {
+      "group": "http",
+      "name": "//task/deck",
+      "ok": true,
+      "status": 404,
+      "expected": 404
+    },
+    {
+      "group": "well-known",
+      "name": "/.well-known/apple-app-site-association",
+      "ok": true,
+      "status": 200,
+      "type": "application/json"
+    },
+    {
+      "group": "well-known",
+      "name": "/.well-known/assetlinks.json",
+      "ok": true,
+      "status": 200,
+      "type": "application/json"
+    },
+    {
+      "group": "well-known",
+      "name": "aasa paths are §6.1's ten",
+      "ok": true,
+      "paths": [
+        "/u/*",
+        "/r/*",
+        "/roomid/*",
+        "/task/*",
+        "/goal/*",
+        "/agent/*",
+        "/artifact/*",
+        "/circle/*",
+        "/invite/*",
+        "/team/*"
+      ]
+    },
+    {
+      "group": "well-known",
+      "name": "aasa app id from config",
+      "ok": true,
+      "appIDs": [
+        "VZZQ2Q6734.ai.pagepeek.app.zymi.dev"
+      ]
+    },
+    {
+      "group": "http",
+      "name": "OPTIONS * HTTP/1.1",
+      "ok": true,
+      "status": "400"
+    },
+    {
+      "group": "http",
+      "name": "GET http://evil.example/task/deck HTTP/1.1",
+      "ok": true,
+      "status": "400"
+    },
+    {
+      "group": "http",
+      "name": "TRACE / HTTP/1.1",
+      "ok": true,
+      "status": "400"
+    },
+    {
+      "group": "http",
+      "name": "still serving after the 400s",
+      "ok": true
+    },
+    {
+      "group": "page",
+      "name": "task-zh-iphone",
+      "ok": true,
+      "status": "link",
+      "heading": "这是一个 Zymi 的任务链接",
+      "hrefs": [
+        "zymi-dev://open/task/deck"
+      ],
+      "expectedHref": "zymi-dev://open/task/deck",
+      "echoed": false
+    },
+    {
+      "group": "page",
+      "name": "task-en-iphone",
+      "ok": true,
+      "status": "link",
+      "heading": "This is a Zymi task link",
+      "hrefs": [
+        "zymi-dev://open/task/deck"
+      ],
+      "expectedHref": "zymi-dev://open/task/deck",
+      "echoed": false
+    },
+    {
+      "group": "page",
+      "name": "room-zh-mac",
+      "ok": true,
+      "status": "link",
+      "heading": "这是一个 Zymi 的聊天室链接",
+      "hrefs": [
+        "zymi-dev://open/roomid/owtPMO14G1v6Yl9KlRjjDmlKdVC5NbSUPqbiF2Fru30"
+      ],
+      "expectedHref": "zymi-dev://open/roomid/owtPMO14G1v6Yl9KlRjjDmlKdVC5NbSUPqbiF2Fru30",
+      "echoed": false
+    },
+    {
+      "group": "page",
+      "name": "message-en-iphone",
+      "ok": true,
+      "status": "link",
+      "heading": "This is a Zymi message link",
+      "hrefs": [
+        "zymi-dev://open/r/team-alpha:dev.zymi.app/e/Lh9m3k_ZqXo-2vT8pQ1rW5yA7cE0dF4gH6jK9lM2nB4"
+      ],
+      "expectedHref": "zymi-dev://open/r/team-alpha:dev.zymi.app/e/Lh9m3k_ZqXo-2vT8pQ1rW5yA7cE0dF4gH6jK9lM2nB4",
+      "echoed": false
+    },
+    {
+      "group": "page",
+      "name": "user-zh-iphone",
+      "ok": true,
+      "status": "link",
+      "heading": "这是一个 Zymi 的用户链接",
+      "hrefs": [
+        "zymi-dev://open/u/0b1f0c3e-9a52-4b6e-8f1d-2c3b4a5d6e70:dev.zymi.app"
+      ],
+      "expectedHref": "zymi-dev://open/u/0b1f0c3e-9a52-4b6e-8f1d-2c3b4a5d6e70:dev.zymi.app",
+      "echoed": false
+    },
+    {
+      "group": "page",
+      "name": "goal-en-mac",
+      "ok": true,
+      "status": "link",
+      "heading": "This is a Zymi goal link",
+      "hrefs": [
+        "zymi-dev://open/goal/g_7Kx2"
+      ],
+      "expectedHref": "zymi-dev://open/goal/g_7Kx2",
+      "echoed": false
+    },
+    {
+      "group": "page",
+      "name": "invalid-zh",
+      "ok": true,
+      "status": "malformed",
+      "heading": "链接无效",
+      "hrefs": [],
+      "expectedHref": null,
+      "echoed": false
+    },
+    {
+      "group": "page",
+      "name": "foreign-en",
+      "ok": true,
+      "status": "foreign_server",
+      "heading": "This link isn't valid",
+      "hrefs": [],
+      "expectedHref": null,
+      "echoed": false
+    },
+    {
+      "group": "page",
+      "name": "unknown-kind-zh",
+      "ok": true,
+      "status": "unknown_kind",
+      "heading": "打不开这个链接，可能需要更新 App",
+      "hrefs": [],
+      "expectedHref": null,
+      "echoed": false
+    },
+    {
+      "group": "page",
+      "name": "reserved-en",
+      "ok": true,
+      "status": "reserved",
+      "heading": "Please update the app",
+      "hrefs": [],
+      "expectedHref": null,
+      "echoed": false
+    },
+    {
+      "group": "page",
+      "name": "no-echo-settings-zh",
+      "ok": true,
+      "status": "unknown_kind",
+      "heading": "打不开这个链接，可能需要更新 App",
+      "hrefs": [],
+      "expectedHref": null,
+      "echoed": false
+    },
+    {
+      "group": "page",
+      "name": "home-zh",
+      "ok": true,
+      "status": "home",
+      "heading": "这里是 Zymi 的分享链接。打开别人发给你的链接，会在 Zymi App 里接着打开。",
+      "hrefs": [],
+      "expectedHref": null,
+      "echoed": false
+    },
+    {
+      "group": "page",
+      "name": "legacy-fragment-replaced",
+      "ok": true
+    },
+    {
+      "group": "page",
+      "name": "legacy-protocol-relative-rejected",
+      "ok": true
+    }
+  ],
+  "note": "Screenshots and DOM dumps beside this file; the .well-known files as served."
+}

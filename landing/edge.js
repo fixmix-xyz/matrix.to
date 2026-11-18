@@ -15,8 +15,8 @@ limitations under the License.
 */
 
 // The landing page's edge function (SPEC-deeplink.md §6.5), written against the Fetch API only, so any
-// host that runs one (B5 is pending: Cloudflare Workers, Pages Functions…) can wrap it; scripts/serve-local.js
-// runs the same code locally. It never fetches anything: it decides a status code and returns built files.
+// host that runs one can wrap it; scripts/serve.js runs it locally and in the dev host's container (deploy/ec2).
+// It never fetches anything: it decides a status code and returns built files.
 //
 // - `/.well-known/*`: the generated files, application/json, 200, never a redirect.
 // - a built file: that file.
