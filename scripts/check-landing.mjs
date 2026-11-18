@@ -5,8 +5,8 @@
 // 1. Edge status codes for every https parse vector, each on its own lane's config (pure `route`, no server):
 //    a link of ours 200, a reject 404 (any path, not only the canonical prefixes), our host's root 200. Vectors that a browser never sends as a request path
 //    (credentials, over-long inputs, other hosts, schemes) are listed as skipped with the reason.
-// 2. HTTP against the real local server (scripts/serve-local.js code path): status, Content-Type, security
-//    headers, the raw `%2F` path, the .well-known files.
+// 2. HTTP against the server the dev host runs (scripts/serve.js): status, Content-Type, security headers, the raw
+//    `%2F` path, the .well-known files, and request targets that must answer 400 without stopping the server.
 // 3. The page in headless Chrome (dump-dom and screenshots at 500 px, headless Chrome's narrowest window; zh and en, iPhone and Mac user agents): what it says,
 //    the "open" button's href equals the vector's handoff, no id or path segment echoed, legacy fragments replaced
 //    by the canonical path.
@@ -14,13 +14,14 @@
 import { execFile } from "node:child_process";
 import fs from "node:fs/promises";
 import http from "node:http";
+import net from "node:net";
 import os from "node:os";
 import path from "node:path";
 import { promisify } from "node:util";
 import { fileURLToPath } from "node:url";
 import { build } from "./build.js";
-import { loadSite } from "./serve-local.js";
-import { handleRequest, route } from "../landing/edge.js";
+import { createLandingServer, loadSite } from "./serve.js";
+import { route } from "../landing/edge.js";
 import { linkHandoff } from "../landing/links.js";
 
 const run = promisify(execFile);
@@ -69,11 +70,7 @@ for (const vector of vectors.parse) {
 // 2. HTTP against the local server.
 await build(lane, path.join(root, "build", lane));
 const site = await loadSite(lane);
-const server = http.createServer(async (req, res) => {
-    const response = handleRequest(new Request(`http://127.0.0.1${req.url}`, { method: req.method }), site);
-    res.writeHead(response.status, Object.fromEntries(response.headers));
-    res.end(Buffer.from(await response.arrayBuffer()));
-});
+const server = createLandingServer(site);
 await new Promise(resolve => server.listen(0, "127.0.0.1", resolve));
 const origin = `http://127.0.0.1:${server.address().port}`;
 
@@ -120,6 +117,24 @@ check("well-known", "aasa paths are §6.1's ten", JSON.stringify(paths) === JSON
     ["/u/*", "/r/*", "/roomid/*", "/task/*", "/goal/*", "/agent/*", "/artifact/*", "/circle/*", "/invite/*", "/team/*"]), { paths });
 check("well-known", "aasa app id from config", JSON.stringify(aasa.applinks.details[0].appIDs) === JSON.stringify(site.config.apple.app_ids),
     { appIDs: aasa.applinks.details[0].appIDs });
+
+// Request targets that are not a path, and methods the Fetch API refuses: each answers 400 and the server keeps
+// serving (one `OPTIONS *` used to stop it).
+function rawStatus(requestLine) {
+    return new Promise((resolve, reject) => {
+        const socket = net.connect(server.address().port, "127.0.0.1");
+        let data = "";
+        socket.on("data", chunk => { data += chunk; });
+        socket.on("end", () => resolve(/^HTTP\/1\.1 (\d{3})/.exec(data)?.[1] ?? null));
+        socket.on("error", reject);
+        socket.write(`${requestLine}\r\nHost: landing\r\nConnection: close\r\n\r\n`);
+    });
+}
+for (const requestLine of ["OPTIONS * HTTP/1.1", "GET http://evil.example/task/deck HTTP/1.1", "TRACE / HTTP/1.1"]) {
+    const status = await rawStatus(requestLine);
+    check("http", requestLine, status === "400", { status });
+}
+check("http", "still serving after the 400s", (await get("/")).status === 200, {});
 
 // 3. The page in Chrome.
 const UA = {
