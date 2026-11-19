@@ -18,7 +18,8 @@ no command here can touch the `zymi-dev` stack.
 
 Account 848776073113 (profile `zymix-production`), region `eu-west-2`, tagged `Project=zymi`, `Environment=dev`,
 `ManagedBy=manual` (and `map-migrated=migQJ7XN3O8EO` on the target group), like the rest of the dev host. Created
-2026-11-18; the IDs are in the release directory's `aws-resources.json` on the host.
+2026-11-18 by the first release; the IDs are in its `aws-resources.json`, in
+`/srv/zymi/deployments/links-dev-20261118-dbbb140/` on the host. Later releases reuse them and add none.
 
 | Resource | Name | Notes |
 | --- | --- | --- |
@@ -36,7 +37,7 @@ of the host (checked below).
 | Path | What |
 | --- | --- |
 | `/srv/zymi/links-dev/compose.env` | From `links-dev.compose.env.example`; `LINKS_IMAGE` names the running image. |
-| `/srv/zymi/deployments/links-dev-<yyyymmdd>-<short sha>/` | `source/` (the image's sources at the deployed commit), `release.json`, `rollback.txt`. |
+| `/srv/zymi/deployments/links-dev-<yyyymmdd>-<short sha>/` | `source.tar.gz` (the archive as sent) and `source/` (unpacked: the image's sources at the deployed commit), `release.json` (the commit and image deployed), `rollback.txt` (the previous `LINKS_IMAGE`). The first release's directory also has `aws-resources.json`. |
 
 The host has no GitHub key. The source goes over as a `git archive` of only what the image needs (`package.json`,
 `config`, `landing`, `scripts/build.js`, `scripts/serve.js`, `Dockerfile`, `.dockerignore`, `deploy`): about 25 KB
@@ -63,6 +64,16 @@ curl -fsS -o /dev/null -w '%{http_code}\n' http://127.0.0.1:8110/
 Before the `sed`, write the previous `LINKS_IMAGE` to `rollback.txt`. To roll back, put it back in `compose.env`
 and run the same `up -d --wait`.
 
+## Releases
+
+Each release is in `/srv/zymi/deployments/links-dev-<date>-<commit>/` on the host. Add a row for each deploy; the
+running one is whatever `LINKS_IMAGE` in `compose.env` names.
+
+| Date (UTC) | Commit | Image | What changed | Rolls back to |
+| --- | --- | --- | --- | --- |
+| 2026-11-19 11:41 | `1ad40f7` ([#2](https://github.com/fixmix-xyz/matrix.to/pull/2)) | `zymi-links:dev-1ad40f7` | The AASA's `appIDs` is `858257F65U.london.zymi.app`, the zymi-ios dev and TestFlight build, instead of the placeholder `VZZQ2Q6734.ai.pagepeek.app.zymi.dev`. Nothing else changed. Checked on a device the same day: a `to-dev.zymi.app` link opens the dev build (with `applinks:to-dev.zymi.app`); the page's "Open Zymi" button was not checked separately. | `zymi-links:dev-dbbb140` |
+| 2026-11-18 | `dbbb140` ([#1](https://github.com/fixmix-xyz/matrix.to/pull/1)) | `zymi-links:dev-dbbb140` | First deploy. Created the AWS resources above. | Nothing (first deploy): `docker compose ... down` |
+
 ## Check
 
 From anywhere:
@@ -75,6 +86,9 @@ From anywhere:
   another server and 404s.)
 - `curl -s https://to-dev.zymi.app/.well-known/apple-app-site-association` → 200, `application/json`, no redirect,
   `appIDs` from `config/lanes/dev.json`.
+- `curl -s https://app-site-association.cdn-apple.com/a/v1/to-dev.zymi.app` → the same `appIDs`. iOS fetches the
+  file from Apple's CDN, not from the host, so after an `app_ids` change this is what devices see. It can lag the
+  host.
 - `aws elbv2 describe-target-health` on `zymi-dev-links` → `healthy`; `https://dev.zymi.app/ready` and
   `https://matrix-dev.zymi.app/_matrix/client/versions` still answer 200.
 
