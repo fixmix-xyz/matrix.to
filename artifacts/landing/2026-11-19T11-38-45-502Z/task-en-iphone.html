@@ -1,0 +1,108 @@
+<!DOCTYPE html>
+<html lang="en"><head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+    <meta name="referrer" content="no-referrer">
+    <meta name="color-scheme" content="light dark">
+    <meta name="theme-color" content="#ffffff" media="(prefers-color-scheme: light)">
+    <meta name="theme-color" content="#171819" media="(prefers-color-scheme: dark)">
+    <title>Zymi</title>
+    <link rel="stylesheet" href="/landing.css">
+    <script type="module" src="/page.js"></script>
+</head>
+<body data-status="link" data-mood="familiar">
+    <!-- Zymi, the cloud mascot: zymi-ios Design/ZymiVibe2D/zymi-vibe.svg, its face layers and floaters only.
+         No inline styles (the page's CSP is style-src 'self'): which face shows is landing.css's, by body[data-mood]. -->
+    <template id="zymi-mascot">
+    <svg class="mascot" viewBox="0 0 64 64" aria-hidden="true" focusable="false">
+    <defs>
+      <radialGradient id="puff-top" cx=".32" cy=".19" r=".9">
+      <stop stop-color="#E2ECCF"></stop><stop offset=".55" stop-color="#CCDDB9"></stop><stop offset="1" stop-color="#B6CAA3"></stop>
+    </radialGradient>
+      <linearGradient id="sage-to-butter" x1="16" y1="16" x2="47" y2="26" gradientUnits="userSpaceOnUse">
+      <stop offset=".3" stop-color="#F4E5B6" stop-opacity="0"></stop><stop offset="1" stop-color="#F4E5B6" stop-opacity=".82"></stop>
+    </linearGradient>
+      <radialGradient id="puff-left" cx=".27" cy=".2" r=".95">
+      <stop stop-color="#DCE8CC"></stop><stop offset=".58" stop-color="#C6D9B5"></stop><stop offset="1" stop-color="#B2C7A2"></stop>
+    </radialGradient>
+      <radialGradient id="puff-right" cx=".3" cy=".22" r=".95">
+      <stop stop-color="#FFF1C7"></stop><stop offset=".6" stop-color="#F4E4B6"></stop><stop offset="1" stop-color="#E5D29F"></stop>
+    </radialGradient>
+      <radialGradient id="cream" cx=".35" cy=".23" r=".95">
+      <stop stop-color="#FFFAF1"></stop><stop offset=".65" stop-color="#F8EFE1"></stop><stop offset="1" stop-color="#EDE1CE"></stop>
+    </radialGradient>
+      <radialGradient id="blush">
+      <stop stop-color="#EE9E9A" stop-opacity=".65"></stop><stop offset=".55" stop-color="#F2ADA6" stop-opacity=".38"></stop><stop offset="1" stop-color="#F2ADA6" stop-opacity="0"></stop>
+    </radialGradient>
+      <radialGradient id="ground">
+      <stop stop-color="#28352B" stop-opacity=".18"></stop><stop offset="1" stop-color="#28352B" stop-opacity="0"></stop>
+    </radialGradient>
+    </defs>
+    <g class="m-shadow-wrap">
+      <g class="m-ground-shadow"><ellipse cx="32" cy="58" rx="19" ry="3" fill="url(#ground)"></ellipse></g>
+    </g>
+    <g class="m-bob">
+      <g class="m-head"><g> <ellipse cx="31" cy="25" rx="16.5" ry="15.5" fill="url(#puff-top)"></ellipse> <ellipse cx="31" cy="25" rx="16.5" ry="15.5" fill="url(#sage-to-butter)"></ellipse> </g> <ellipse cx="18.2" cy="36.8" rx="12.5" ry="15.5" fill="url(#puff-left)"></ellipse> <ellipse cx="45.6" cy="36.2" rx="12.7" ry="16.1" fill="url(#puff-right)"></ellipse></g>
+      <g class="m-face-base"><path d="M32 24.2C43.2 24.2 50.5 29.8 51.2 39.4C52 49.8 44.5 54.3 32 54.3C19.5 54.3 12 49.8 12.8 39.4C13.5 29.8 20.8 24.2 32 24.2Z" fill="url(#cream)"></path></g>
+      <g class="m-cheek-left"><ellipse cx="19.4" cy="42.5" rx="4.6" ry="3.2" fill="url(#blush)"></ellipse></g>
+      <g class="m-cheek-right"><ellipse cx="44.6" cy="42.5" rx="4.6" ry="3.2" fill="url(#blush)"></ellipse></g>
+      <g class="m-eyes-neutral"><g><circle cx="23.8" cy="38.4" r="2.2" fill="#39241C"></circle><circle cx="23.2" cy="37.7" r=".65" fill="#FFFFFF"></circle></g> <g><circle cx="40.2" cy="38.4" r="2.2" fill="#39241C"></circle><circle cx="39.6" cy="37.7" r=".65" fill="#FFFFFF"></circle></g></g>
+      <g class="m-mouth-neutral"><path d="M29.4 43.6C29.6 46.2 34.4 46.2 34.6 43.6" stroke="#39241C" stroke-width="1.25" stroke-linecap="round"></path></g>
+      <g class="m-eyes-familiar"><path d="M21.3 38.8Q23.8 34.8 26.3 38.8" stroke="#39241C" stroke-width="1.5" stroke-linecap="round"></path> <path d="M37.7 38.8Q40.2 34.8 42.7 38.8" stroke="#39241C" stroke-width="1.5" stroke-linecap="round"></path></g>
+      <g class="m-mouth-familiar"><path d="M28.5 43.6C29.5 47.5 34.5 47.5 35.5 43.6" stroke="#39241C" stroke-width="1.35" stroke-linecap="round"></path></g>
+      <g class="m-eyes-adventurous"><g><circle cx="23.8" cy="38.4" r="2.85" fill="#39241C"></circle><path d="M23.3 35.9L23.85 37.05L25 37.6L23.85 38.15L23.3 39.3L22.75 38.15L21.6 37.6L22.75 37.05Z" fill="#FFFFFF"></path></g> <g><circle cx="40.2" cy="38.4" r="2.85" fill="#39241C"></circle><path d="M39.7 35.9L40.25 37.05L41.4 37.6L40.25 38.15L39.7 39.3L39.15 38.15L38 37.6L39.15 37.05Z" fill="#FFFFFF"></path></g></g>
+      <g class="m-mouth-adventurous"><ellipse cx="32" cy="44.8" rx="1.65" ry="2.05" fill="#39241C"></ellipse></g>
+      <g class="m-eyes-blink"><path d="M21.7 38.5Q23.8 39.6 25.9 38.5M38.1 38.5Q40.2 39.6 42.3 38.5" stroke="#39241C" stroke-width="1.35" stroke-linecap="round"></path></g>
+      <g class="m-floater-heart"><path d="M54 24.8C52.7 23.7 49.8 21.8 49.8 19.7C49.8 17.4 52.6 16.7 54 18.6C55.4 16.7 58.2 17.4 58.2 19.7C58.2 21.8 55.3 23.7 54 24.8Z" fill="#6029E9"></path></g>
+      <g class="m-floater-sparkle"><path d="M54 16.8Q54.8 20.2 58.2 21Q54.8 21.8 54 25.2Q53.2 21.8 49.8 21Q53.2 20.2 54 16.8Z" fill="#B700B3"></path></g>
+    </g>
+</svg>
+    </template>
+    <main><header class="top"><p class="wordmark">zymi</p><button type="button" class="language">中文</button></header><div class="hero"><div class="halo"></div>
+    <svg class="mascot" viewBox="0 0 64 64" aria-hidden="true" focusable="false">
+    <defs>
+      <radialGradient id="puff-top" cx=".32" cy=".19" r=".9">
+      <stop stop-color="#E2ECCF"></stop><stop offset=".55" stop-color="#CCDDB9"></stop><stop offset="1" stop-color="#B6CAA3"></stop>
+    </radialGradient>
+      <linearGradient id="sage-to-butter" x1="16" y1="16" x2="47" y2="26" gradientUnits="userSpaceOnUse">
+      <stop offset=".3" stop-color="#F4E5B6" stop-opacity="0"></stop><stop offset="1" stop-color="#F4E5B6" stop-opacity=".82"></stop>
+    </linearGradient>
+      <radialGradient id="puff-left" cx=".27" cy=".2" r=".95">
+      <stop stop-color="#DCE8CC"></stop><stop offset=".58" stop-color="#C6D9B5"></stop><stop offset="1" stop-color="#B2C7A2"></stop>
+    </radialGradient>
+      <radialGradient id="puff-right" cx=".3" cy=".22" r=".95">
+      <stop stop-color="#FFF1C7"></stop><stop offset=".6" stop-color="#F4E4B6"></stop><stop offset="1" stop-color="#E5D29F"></stop>
+    </radialGradient>
+      <radialGradient id="cream" cx=".35" cy=".23" r=".95">
+      <stop stop-color="#FFFAF1"></stop><stop offset=".65" stop-color="#F8EFE1"></stop><stop offset="1" stop-color="#EDE1CE"></stop>
+    </radialGradient>
+      <radialGradient id="blush">
+      <stop stop-color="#EE9E9A" stop-opacity=".65"></stop><stop offset=".55" stop-color="#F2ADA6" stop-opacity=".38"></stop><stop offset="1" stop-color="#F2ADA6" stop-opacity="0"></stop>
+    </radialGradient>
+      <radialGradient id="ground">
+      <stop stop-color="#28352B" stop-opacity=".18"></stop><stop offset="1" stop-color="#28352B" stop-opacity="0"></stop>
+    </radialGradient>
+    </defs>
+    <g class="m-shadow-wrap">
+      <g class="m-ground-shadow"><ellipse cx="32" cy="58" rx="19" ry="3" fill="url(#ground)"></ellipse></g>
+    </g>
+    <g class="m-bob">
+      <g class="m-head"><g> <ellipse cx="31" cy="25" rx="16.5" ry="15.5" fill="url(#puff-top)"></ellipse> <ellipse cx="31" cy="25" rx="16.5" ry="15.5" fill="url(#sage-to-butter)"></ellipse> </g> <ellipse cx="18.2" cy="36.8" rx="12.5" ry="15.5" fill="url(#puff-left)"></ellipse> <ellipse cx="45.6" cy="36.2" rx="12.7" ry="16.1" fill="url(#puff-right)"></ellipse></g>
+      <g class="m-face-base"><path d="M32 24.2C43.2 24.2 50.5 29.8 51.2 39.4C52 49.8 44.5 54.3 32 54.3C19.5 54.3 12 49.8 12.8 39.4C13.5 29.8 20.8 24.2 32 24.2Z" fill="url(#cream)"></path></g>
+      <g class="m-cheek-left"><ellipse cx="19.4" cy="42.5" rx="4.6" ry="3.2" fill="url(#blush)"></ellipse></g>
+      <g class="m-cheek-right"><ellipse cx="44.6" cy="42.5" rx="4.6" ry="3.2" fill="url(#blush)"></ellipse></g>
+      <g class="m-eyes-neutral"><g><circle cx="23.8" cy="38.4" r="2.2" fill="#39241C"></circle><circle cx="23.2" cy="37.7" r=".65" fill="#FFFFFF"></circle></g> <g><circle cx="40.2" cy="38.4" r="2.2" fill="#39241C"></circle><circle cx="39.6" cy="37.7" r=".65" fill="#FFFFFF"></circle></g></g>
+      <g class="m-mouth-neutral"><path d="M29.4 43.6C29.6 46.2 34.4 46.2 34.6 43.6" stroke="#39241C" stroke-width="1.25" stroke-linecap="round"></path></g>
+      <g class="m-eyes-familiar"><path d="M21.3 38.8Q23.8 34.8 26.3 38.8" stroke="#39241C" stroke-width="1.5" stroke-linecap="round"></path> <path d="M37.7 38.8Q40.2 34.8 42.7 38.8" stroke="#39241C" stroke-width="1.5" stroke-linecap="round"></path></g>
+      <g class="m-mouth-familiar"><path d="M28.5 43.6C29.5 47.5 34.5 47.5 35.5 43.6" stroke="#39241C" stroke-width="1.35" stroke-linecap="round"></path></g>
+      <g class="m-eyes-adventurous"><g><circle cx="23.8" cy="38.4" r="2.85" fill="#39241C"></circle><path d="M23.3 35.9L23.85 37.05L25 37.6L23.85 38.15L23.3 39.3L22.75 38.15L21.6 37.6L22.75 37.05Z" fill="#FFFFFF"></path></g> <g><circle cx="40.2" cy="38.4" r="2.85" fill="#39241C"></circle><path d="M39.7 35.9L40.25 37.05L41.4 37.6L40.25 38.15L39.7 39.3L39.15 38.15L38 37.6L39.15 37.05Z" fill="#FFFFFF"></path></g></g>
+      <g class="m-mouth-adventurous"><ellipse cx="32" cy="44.8" rx="1.65" ry="2.05" fill="#39241C"></ellipse></g>
+      <g class="m-eyes-blink"><path d="M21.7 38.5Q23.8 39.6 25.9 38.5M38.1 38.5Q40.2 39.6 42.3 38.5" stroke="#39241C" stroke-width="1.35" stroke-linecap="round"></path></g>
+      <g class="m-floater-heart"><path d="M54 24.8C52.7 23.7 49.8 21.8 49.8 19.7C49.8 17.4 52.6 16.7 54 18.6C55.4 16.7 58.2 17.4 58.2 19.7C58.2 21.8 55.3 23.7 54 24.8Z" fill="#6029E9"></path></g>
+      <g class="m-floater-sparkle"><path d="M54 16.8Q54.8 20.2 58.2 21Q54.8 21.8 54 25.2Q53.2 21.8 49.8 21Q53.2 20.2 54 16.8Z" fill="#B700B3"></path></g>
+    </g>
+</svg>
+    </div><h1>This is a Zymi task link</h1><p class="lead">Only the account that created it can open it.</p><div class="actions"><a class="button" href="zymi-dev://open/task/deck" data-platform="ios">Open in Zymi</a></div><div class="notes"><p class="note">If the app isn't signed in yet, it opens this link after you sign in (for a limited time).</p><p class="note">If nothing happens, update the app to the latest version.</p><p class="note">Don't have Zymi yet? Install it, then tap this link again.</p></div></main>
+
+
+</body></html>
