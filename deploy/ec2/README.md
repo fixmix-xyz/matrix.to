@@ -71,6 +71,7 @@ running one is whatever `LINKS_IMAGE` in `compose.env` names.
 
 | Date (UTC) | Commit | Image | What changed | Rolls back to |
 | --- | --- | --- | --- | --- |
+| 2026-11-24 13:44 | `383739b` ([#3](https://github.com/fixmix-xyz/matrix.to/pull/3)) | `zymi-links:dev-383739b` | SPEC-deeplink round 8: links to another server's rooms and users are valid (no server-name check), so `/r/develop:topsecret.network` is now 200, and room links carry up to 3 `via` servers, which the page keeps in its handoff. The AASA is unchanged. | `zymi-links:dev-1ad40f7` |
 | 2026-11-19 11:41 | `1ad40f7` ([#2](https://github.com/fixmix-xyz/matrix.to/pull/2)) | `zymi-links:dev-1ad40f7` | The AASA's `appIDs` is `858257F65U.london.zymi.app`, the zymi-ios dev and TestFlight build, instead of the placeholder `VZZQ2Q6734.ai.pagepeek.app.zymi.dev`. Nothing else changed. Checked on a device the same day: a `to-dev.zymi.app` link opens the dev build (with `applinks:to-dev.zymi.app`); the page's "Open Zymi" button was not checked separately. | `zymi-links:dev-dbbb140` |
 | 2026-11-18 | `dbbb140` ([#1](https://github.com/fixmix-xyz/matrix.to/pull/1)) | `zymi-links:dev-dbbb140` | First deploy. Created the AWS resources above. | Nothing (first deploy): `docker compose ... down` |
 
