@@ -1,10 +1,10 @@
 # 规格：产品分享链接与深链（SPEC-deeplink）
 
-日期：2026-11-13。状态：**第二稿，已按评审修订**；同日按负责人的决定改为只做 Zymi（§12 第四轮）。评审结论是“修改后批准”，原文在 `…/8421319f-…/scratchpad/review-spec-deeplink.md`。逐条答复见文末 §12。
+日期：2026-11-13。状态：**第二稿，已按评审修订**；同日按负责人的决定改为只做 Zymi（§12 第四轮）；11-24 负责人决定开放联邦，别的服务器上的用户、房间和别名也生成规范链接（§12 第八轮）。评审结论是“修改后批准”，原文在 `…/8421319f-…/scratchpad/review-spec-deeplink.md`。逐条答复见文末 §12。
 
 这份规格只定设计，不写代码。所有“现状”都附了 `文件:行`，行号以 2026-11-13 各仓库的工作区为准；zim、im、zymi-services、zymi-ios 的工作区里有别人没提交的改动，行号可能会小幅偏移。
 
-本稿配套的验收数据是 `fixtures/links/vectors.json`，共 137 条，见 §4.5。
+本稿配套的验收数据是 `fixtures/links/vectors.json`，共 149 条（第八轮起），见 §4.5。
 
 ---
 
@@ -16,7 +16,7 @@
 
 | # | 决定 | 默认值 | 推翻后受影响的任务 |
 |---|---|---|---|
-| B1 | 范围 | **负责人已定（11-13）：只做 Zymi（zim 和 zymi-ios）。** 负责人原话：「这个是新的产品 zymi，只要它的」「Matrix用zymi:」。Unseal 和 ZYMIX 不在范围内，它们的旧写法（旧落地页 `dev.unseal.chat/…/to-share/`、`zymix://unseal/…`、`zymixdemo://unseal/…`）不再支持；Matrix 的用户、房间、别名和消息一律用 zymi 写法（`https://<链接域名>/…` 和 `<scheme>://open/{u\|r\|roomid}/…[/e/…]`，不加新语法），`matrix:` URI 不再读。旧链接只认 matrix.to（D3）。Android 和 Windows 先挂起 | A1、W1 |
+| B1 | 范围 | **负责人已定（11-13）：只做 Zymi（zim 和 zymi-ios）。** 负责人原话：「这个是新的产品 zymi，只要它的」「Matrix用zymi:」。Unseal 和 ZYMIX 不在范围内，它们的旧写法（旧落地页 `dev.unseal.chat/…/to-share/`、`zymix://unseal/…`、`zymixdemo://unseal/…`）不再支持；Matrix 的用户、房间、别名和消息一律用 zymi 写法（`https://<链接域名>/…` 和 `<scheme>://open/{u\|r\|roomid}/…[/e/…]`，不加新语法），`matrix:` URI 不再读。旧链接只认 matrix.to（D3）。Android 和 Windows 先挂起。**11-24 负责人补充（§12 第八轮）：开放联邦。** 登录仍然只有 Zymi 账号；能链接的 Matrix 实体不再限于本服务器，别的服务器上的用户、房间、别名和消息也用 zymi 写法 | A1、W1 |
 | B2 | 链接域名 | **负责人已定（11-17，先用）：** `to.zymi.app`（prod）、`to-dev.zymi.app`（dev）；Debug 连本地栈用 `to-local.zymi.test`（只给 E2E）。仍然**全部做成配置项**（zim 在 project.yml 的 `ZimLinkLanes`），代码里不写死。testing 线待定 | P2、P3、Z2、S2、Z4、S4 |
 | B3 | 生产环境的 Team ID、Bundle ID 和签名指纹 | **没有默认值，留空** | 被它阻塞：P2（AASA 和 assetlinks 的内容）、Z4、S4、落地页的商店链接、Smart App Banner |
 | B3s | scheme | **负责人已定（11-13）：产品的 scheme 一律是 zymi 家族，不再用 zim。** 规则 `zymi[-<发布线>]`：prod 是 `zymi`，dev 是 `zymi-dev`，testing 是 `zymi-testing`；Debug 构建（连本地栈）是 `zymi-debug`。规范形式 `zymi://open/<路径>`。全表见 §5.3。`zim` 退役，不进旧写法（§12 第三轮）。“dev 线用 `zymi-dev` 而不是 `zymi`”是协调者按这条规则定的，负责人可推翻 | Z1、§5.3、§6.1、§6.2、向量 |
@@ -31,8 +31,8 @@
 |---|---|---|
 | D1 | **规范链接放在 URL 路径里，不放在片段（`#/…`）里。** 挂在专用的链接域名上，每条发布线一个，例如 `https://<LINK_HOST>/roomid/<id>`、`/u/<id>`、`/task/<id>`。自定义 scheme 写成 `<scheme>://open/<同一路径>`，只用来从落地页把链接交给 App。 | API 35 以下的 Android 在 App Links 里**匹配不了片段**（片段匹配要到 API 35 的 `uri-relative-filter-group` 才有）。服务端看得到路径，才能用边缘函数返回 404、做预览卡片。聊天消息里只放行 https 链接，自定义 scheme 会被丢掉（`IMChatMac/Message.swift:396-399`）。 |
 | D2 | **语法只有一份，配一份共用的测试向量。** 权威副本是本仓库的 `fixtures/links/vectors.json`。zim 和 zymi-ios 由 **zymi-core** 负责生成和解析链接，做成不依赖登录状态的自由函数。IMKit **不自带语法**，只提供两个注入点：链接生成器和链接打开器。每个 App 只有**一个** `LinkRouter`，所有打开 URL 的地方都先经过它。 | IMKit 和 ZYMIX 都不依赖 zymi-core。“一份向量 + 多份实现”这种做法已有先例：`zymi-services/fixtures/sse-vectors.json` 加 `scripts/sse-parity.sh`。 |
-| D3 | **旧链接只认 matrix.to。** 解析器认 `https://matrix.to/#/…`（这个**旧前缀写成配置里的白名单**，别的 host 上出现同样的片段写法也不认），用于 @ 提及的 pill 和已经发出去的链接。旧落地页、`zymix://unseal/…` 和 `matrix:` URI 都不认，判 `not_ours`（B1）。**@ 提及的 pill 也改用规范链接 `/u/<user>`（负责人 11-17 推翻原定，见 §12 第七轮）**；matrix.to 只作为旧写法继续读。 推出顺序是先发解析器，后发生成器。 | 两端判断 pill 的代码都不看域名（`MatrixHTML.swift:119-140`，`MatrixHtml.kt:137-157`）。dev 的 homeserver 关了联邦、注册和访客（`homeserver.yaml.tmpl:34-43`），用 matrix.to 写法没有坏处。 |
-| D4 | **安全基线。** 落地页不做预览，也不请求任何 homeserver。`client` 和 `web-instance[…]` 两个参数一律忽略。落地页只跳到自己拼出来的地址。会改状态的动作一律先在 App 内确认。服务器名检查只用在**用户 ID、别名和 v12 之前的房间 ID** 上；房间和事件是不是自家的，看链接的 host 属于哪条发布线。没有权限和不存在对外显示同一句话。链接里不放任何令牌，v1 只预留 `/invite/` 路径，不实现。 | matrix.to 会按 `via` 去请求任意服务器拉预览（`src/preview/PreviewViewModel.js:46-59`）。ZYMIX 打开链接就直接加入房间（`../matrix.to/src/open/clients/Zymix.js:17-19`）。v12 的房间 ID 和 v3 之后的事件 ID 都没有服务器部分。 |
+| D3 | **旧链接只认 matrix.to。** 解析器认 `https://matrix.to/#/…`（这个**旧前缀写成配置里的白名单**，别的 host 上出现同样的片段写法也不认），用于 @ 提及的 pill 和已经发出去的链接。旧落地页、`zymix://unseal/…` 和 `matrix:` URI 都不认，判 `not_ours`（B1）。**@ 提及的 pill 也改用规范链接 `/u/<user>`（负责人 11-17 推翻原定，见 §12 第七轮）**；matrix.to 只作为旧写法继续读。**开放联邦以后（11-24，§12 第八轮），别的服务器上的实体也生成规范链接，App 分享出去的不再有 matrix.to。** 推出顺序是先发解析器，后发生成器。 | 两端判断 pill 的代码都不看域名（`MatrixHTML.swift:119-140`，`MatrixHtml.kt:137-157`）。写这一条时 dev 的 homeserver 关了联邦、注册和访客（`homeserver.yaml.tmpl:34-43`）；第八轮起联邦打开，注册和访客仍然关着。 |
+| D4 | **安全基线。** 落地页不做预览，也不请求任何 homeserver。`client` 和 `web-instance[…]` 两个参数一律忽略。落地页只跳到自己拼出来的地址。会改状态的动作一律先在 App 内确认。**不检查服务器名**（第八轮起开放联邦）：链接是不是我们的，只看 host 或 scheme 属于哪条发布线，和 ID 在哪台服务器上无关。房间链接的 `via` 只交给 App，App 在用户确认之后才拿它去加入（§8.2）；落地页不用它请求任何服务器。没有权限和不存在对外显示同一句话。链接里不放任何令牌，v1 只预留 `/invite/` 路径，不实现。 | matrix.to 会按 `via` 去请求任意服务器拉预览（`src/preview/PreviewViewModel.js:46-59`）。ZYMIX 打开链接就直接加入房间（`../matrix.to/src/open/clients/Zymix.js:17-19`）。v12 的房间 ID 和 v3 之后的事件 ID 都没有服务器部分。 |
 | D5 | **各平台做法。** iOS 和 macOS 用 universal links（AASA 按路径匹配）加 scheme；安卓用 App Links（`assetlinks.json` 加 `autoVerify`）加 scheme；Windows 先注册 scheme，用 Electron 的话就是单实例转发；安卓和 Windows 按 B1 挂起。App 里点到自家链接，**由 `LinkRouter` 拦下来**，不交给系统。 | 现在 IMKit 和 zim 一共有十几个地方会把 https 链接直接交给系统（§5.2）。 |
 
 ---
@@ -164,16 +164,16 @@
 
 ### 4.1 生成规则（逐字节确定）
 
-1. 规范链接是 `https://<本发布线的第一个 host>/<kind>/<id>[/e/<event>]`，**不带 query，也不带片段**。
+1. 规范链接是 `https://<本发布线的第一个 host>/<kind>/<id>[/e/<event>][?via=<server>&via=<server>…]`，**不带片段**。query 只有一种：房间链接（`r`、`roomid`）的 `via`，见第 9 条；别的 kind 一律不带 query。
 2. `kind` 只能是小写的 `u`、`r`、`roomid`、`task`、`goal`、`agent`、`artifact`、`circle`。`invite` 和 `team` 预留，现在不生成。
    - **L2 提议（待定，见 §4.4 和 §11）：** 新增 `expert`（目录条目，Q-A）、`space`（Zymi Space 应用，Q-S），以及两个页面类 kind `settings` 和 `me`（E3）；`agent` 收窄成只表示本账号的主智能体（Q-A）；`circle` 的 id 指 feed 条目（Q-C）。这些定下来之前，生成器不生成它们，解析器照旧判 `unknown_kind`（老版本 App 提示“请更新”）。定下来以后，先加向量，再改 core（先红后绿）。
 3. Matrix ID 去掉 sigil 再放进路径（`@`、`#`、`!`、`$`），写法照搬 MSC2312。
 4. 编码：把 ID 的 UTF-8 字节逐个处理。`A-Z a-z 0-9 - . _ ~ :` 原样保留，其余字节一律写成 `%XX`（十六进制用大写）。所以 `:` **永远不编码**，`+` 写成 `%2B`，`/` 写成 `%2F`，`@` 写成 `%40`。
    - JS 实现**不能**直接用 `encodeURIComponent`：它会把 `:` 编成 `%3A`，又不会编码 `!'()*`。
 5. Zymi 对象的 ID 必须匹配 `[A-Za-z0-9_-]{1,128}`，保留大小写；不匹配就不生成，报 `invalid_id`。由于不含 `.`，生成的路径段不可能是点段。
-6. 给不是本发布线 `server_name` 的用户、别名或旧房间 ID 生成链接时，报 `foreign_server`。
-7. scheme 写法：`<scheme>://open<和 https 一样的路径>`。scheme 来自发布线配置里按平台列出的那张表（§5.3）。
-8. **Matrix ID 的语法**（生成和解析共用；生成时不合法报 `invalid_id`，解析时判 `malformed`）。依据是 Matrix 规范（spec.matrix.org，2026-11-13 对照原文）的 Appendices › Identifier Grammar 和 Room Versions v1、v3、v4。规范对多数 localpart 只排除 `:` 和 NUL；下表凡比规范严的都写明是“收紧”和理由：不开联邦，能链接的 ID 只来自我们自己的服务器（Synapse），它生成的 ID 都在下表范围内。
+6. **不检查服务器名**（第八轮，开放联邦）：用户、别名、房间在哪台服务器上都照常生成。原来的 `foreign_server` 错误不再出现。
+7. scheme 写法：`<scheme>://open<和 https 一样的路径和 query>`。scheme 来自发布线配置里按平台列出的那张表（§5.3）。
+8. **Matrix ID 的语法**（生成和解析共用；生成时不合法报 `invalid_id`，解析时判 `malformed`）。依据是 Matrix 规范（spec.matrix.org，2026-11-13 对照原文）的 Appendices › Identifier Grammar 和 Room Versions v1、v3、v4。规范对多数 localpart 只排除 `:` 和 NUL；下表凡比规范严的都写明是“收紧”和理由。写第一稿时不开联邦，ID 只来自我们自己的 Synapse；第八轮开放联邦以后**仍然保留这些收紧**：它们挡的是显示出来和真实 ID 不一样的字符（bidi 控制符、零宽字符、非 ASCII 的用户 localpart），别的服务器的 ID 更需要挡。超出下表的 ID（主流服务端都不生成）生成时报 `invalid_id`，宿主照旧发 matrix.to（§12 第八轮 F5），这是唯一还会出现 matrix.to 的情况。
 
    | 类型 | 接受 | 依据和说明 |
    |---|---|---|
@@ -187,6 +187,11 @@
    - Matrix ID 一律不超过 255 字节（含 sigil 和服务器）。server name 形如 `hostname`、`IPv4` 或 `[IPv6]`，可以带 `:port`。
    - server name **一律转成小写**再生成、再返回（`@x:ZYMI.APP` 返回 `@x:zymi.app`）；事件 ID 原样保留（base64 区分大小写）。
    - 两种事件 ID 都不可能是 `.` 或 `..`（base64 不含 `.`），所以永远不会是点段；但事件 ID 可以含 `/`，用它拼路径的人必须先编码（§5.2）。
+9. **`via`（第八轮）。** 房间和别名（含带 `/e/<event>` 的消息链接）可以带一组 `via` 服务器，告诉 App 从哪台服务器加入：v12 的房间 ID 没有服务器部分，别的服务器上的房间不带 `via` 就加不进去。规则：
+   - 只有 `DeepLink` 的 `room` 和 `roomAlias` 有 `via` 字段（服务器名的数组，可以为空）；用户和 Zymi 对象没有。
+   - 每个值必须是第 8 条的 server name（可以带端口），不合法就报 `invalid_id`；转成小写；按出现顺序去重，只保留**前 3 个**。
+   - 为空时不带 query。不为空时写成 `?via=<s1>&via=<s2>…`，按上一步的顺序，每个值按第 4 条编码（`:` 原样，IPv6 的 `[`、`]` 写成 `%5B`、`%5D`）。
+   - 有没有 `via`、有几个，照输入原样生成，不按服务器是不是本服务器增删（本服务器的房间带上 `via` 也无害）。
 
 ### 4.2 解析规则（按顺序执行）
 
@@ -210,23 +215,27 @@
    - 房间 ID 里有 `:` 的，按旧写法 `<opaque>:<server>` 处理；没有 `:` 的必须是 v12 写法 `[A-Za-z0-9_-]+`。
    - 事件 ID 是 base64 或 `opaque:server` 两种之一，**不检查服务器**；`.`、`..`、`/../`、`?` 都不符合。
    - Zymi 对象 ID 必须匹配 `[A-Za-z0-9_-]{1,128}`。
-8. 服务器名检查（§8.2）：用户 ID、别名、旧房间 ID 的 server 部分，按 ASCII 不区分大小写的方式和本发布线的 `server_name` 比较，连端口一起比；不相等就判 `foreign_server`。相等的，返回的 ID 里 server 是小写。
-9. 规范链接的 query 和片段全部忽略，包括 `via`、`action`、`client`、`web-instance[]`。旧写法里的 query 也一样。
+8. **不检查服务器名**（第八轮，开放联邦；原来的 `foreign_server` 不再出现）。用户 ID、别名、旧房间 ID 的 server 部分转成小写再返回。
+9. 片段全部忽略。query 里**只读 `via`，而且只在房间链接（`r`、`roomid`，含 `/e/`）上读**；`action`、`client`、`web-instance[]` 等其他参数一律忽略，用户和 Zymi 对象的 query 整个忽略。读法：
+   - query 按 `&` 切成若干项，每项在第一个 `=` 处切成名和值；名按字面、大小写敏感地等于 `via` 的才算，没有 `=` 的项跳过。
+   - 值只解码一次（`+` 不当空格）；解码失败、不是第 4.1 节第 8 条的 server name 的，**跳过这一个值**，不判整条链接 `malformed`（别的客户端生成的 matrix.to 里可能有怪值，房间本身还是能打开）。
+   - 合法的值转成小写，按出现顺序去重，只留前 3 个。一个也没有时 `via` 为空数组。
+   - 旧片段写法（matrix.to）里 `?` 后面的部分按同样的规则读 `via`。
 
-旧片段写法：片段必须以 `#/` 开头；去掉 `?` 后面的部分；以 `user/` 开头的（`#/user/@…`，IMKit 的 mention pill 也认这种写法，`MatrixHTML.mentionedUser`）去掉 `user/` 后必须正好是一个 `@` 用户 ID；其余的按 `/` 最多切成 2 段（标识符，可选再跟一个 `$事件`），出现空段就判 `malformed`；每段解码一次，再看 sigil：`@` 是用户，`#` 是别名，`!` 是房间，`+` 是社群 → `unknown_kind`。ID 语法和 §4.1 第 8 条一样（`$..` 判 `malformed`）。
+旧片段写法：片段必须以 `#/` 开头；`?` 后面的部分按第 9 条读 `via`，再去掉；以 `user/` 开头的（`#/user/@…`，IMKit 的 mention pill 也认这种写法，`MatrixHTML.mentionedUser`）去掉 `user/` 后必须正好是一个 `@` 用户 ID；其余的按 `/` 最多切成 2 段（标识符，可选再跟一个 `$事件`），出现空段就判 `malformed`；每段解码一次，再看 sigil：`@` 是用户，`#` 是别名，`!` 是房间，`+` 是社群 → `unknown_kind`。ID 语法和 §4.1 第 8 条一样（`$..` 判 `malformed`）。
 
 ### 4.3 解析结果
 
 | 结果 | 含义 | App 的处理 |
 |---|---|---|
 | `{link, source}` | 是我们的链接，并且合法 | 路由过去（§5、§8） |
-| `{reject: malformed / unknown_kind / reserved / foreign_server}` | 是我们的链接，但不合法 | `malformed`、`foreign_server` 提示“链接无效”；`unknown_kind` 提示“打不开这个链接，可能需要更新 App”（`+group`、`/U/` 这类也走这句）；`reserved` 提示“请更新 App”。**都不交给系统** |
+| `{reject: malformed / unknown_kind / reserved}` | 是我们的链接，但不合法 | `malformed` 提示“链接无效”（第八轮删掉了 `foreign_server`）；`unknown_kind` 提示“打不开这个链接，可能需要更新 App”（`+group`、`/U/` 这类也走这句）；`reserved` 提示“请更新 App”。**都不交给系统** |
 | `{other_lane: <名字>}` | 是我们另一条发布线的链接 | 提示“这是 <名字> 环境的链接”，不打开 |
 | `{not_ours: true}` | 不是我们的链接 | 按原来的规则处理，比如交给系统浏览器 |
 
-`link` 的类型叫 **`DeepLink`**（不叫 `Link`：SwiftUI 已经有 `Link` 和 `ShareLink`）。向量里的形状：`{kind: user, user_id}`、`{kind: room, room_id | room_alias, event_id?}`、`{kind: task | goal | agent | artifact | circle, id}`；zymi-core、Swift 和 TypeScript 里房间分成两种：`room {room_id, event_id?}` 和 `roomAlias {room_alias, event_id?}`，不会出现两个都有或都没有的值。`source` 取值有 `canonical`、`scheme`、`matrix_to` 三种，用于统计和排查（`matrix_uri` 和 `zymix` 随 B1 删掉）。
+`link` 的类型叫 **`DeepLink`**（不叫 `Link`：SwiftUI 已经有 `Link` 和 `ShareLink`）。向量里的形状：`{kind: user, user_id}`、`{kind: room, room_id | room_alias, event_id?, via?}`、`{kind: task | goal | agent | artifact | circle, id}`；`via` 是服务器名的数组，为空时向量里省略这个字段。zymi-core、Swift 和 TypeScript 里房间分成两种：`room {room_id, event_id?, via}` 和 `roomAlias {room_alias, event_id?, via}`，不会出现两个都有或都没有的值。`source` 取值有 `canonical`、`scheme`、`matrix_to` 三种，用于统计和排查（`matrix_uri` 和 `zymix` 随 B1 删掉）。
 
-生成的结果是 url，或者错误之一：`invalid_id`（ID 不符合 §4.1）、`foreign_server`（§4.1 第 6 条）、`no_scheme`（这个平台没配 scheme，只有 handoff 会报）。
+生成的结果是 url，或者错误之一：`invalid_id`（ID 或 `via` 不符合 §4.1）、`no_scheme`（这个平台没配 scheme，只有 handoff 会报）。`foreign_server` 第八轮删掉；各语言的绑定可以把这个枚举值留到下一次接口清理，但任何函数都不再返回它。
 
 **配置错误不是结果**：配置通不过 §5.3 的校验时，三个函数都直接抛错（Swift `throws`、TS 抛 `ZymiError`，`invalidRequest`），这是要修的编程错误，不按单条链接处理。对任何输入，函数都返回上面的结果之一，不抛错、不崩溃。
 
@@ -234,9 +243,9 @@
 
 | 实体 | 规范链接 | 打开时 |
 |---|---|---|
-| 用户 | `/u/<localpart>:<server>` | 打开资料页；要发私聊得用户再点一次 |
-| 房间、群、空间 | `/roomid/<opaque>[:<server>]`、`/r/<alias>` | 已经加入的直接打开；没加入的先确认（§8.2） |
-| 消息（包括线程里的） | `/roomid/<…>/e/<event>`、`/r/<alias>/e/<event>` | 跳到这条消息，在线程里的就打开线程 |
+| 用户 | `/u/<localpart>:<server>`（任何服务器） | 打开资料页；要发私聊得用户再点一次。别的服务器的用户，资料页显示完整 ID（含服务器），见 §8.2 |
+| 房间、群、空间 | `/roomid/<opaque>[:<server>][?via=…]`、`/r/<alias>[?via=…]`（任何服务器） | 已经加入的直接打开；没加入的先确认（§8.2），确认后按 `via` 加入 |
+| 消息（包括线程里的） | `/roomid/<…>/e/<event>[?via=…]`、`/r/<alias>/e/<event>[?via=…]` | 跳到这条消息，在线程里的就打开线程 |
 | 任务、目标、智能体、产物、圈子 | `/task/<id>` 等 | 只有对象所属的账号能打开（§8.4；跨账号见 B8） |
 | 邀请码、团队 | `/invite/…`、`/team/…` **只预留** | 解析为 `reserved`。`team` 指的是组织团队，**不是**专家目录里的团队（Q-T，待定；默认：专家团队用 `expert` 打开，`/team/` 继续预留） |
 | 服务端生成的分享链接（比如音乐帖子） | 不归这套语法管 | 音乐帖子的 `share_url` 只在 `visibility == public` 时才有，是工作区里找到的唯一一种公开对象（zymi-ios `ZymiModel/Music/MusicDiscoveryModels.swift:161, 195-197, 299-307`；只有模型，没有界面在用）。它用哪个域名、落地页由谁出：Q-M，待定。默认：不用链接域名，由服务端自己的页面出；**如果**用链接域名，就要在 AASA 里给它的路径一个 kind，或者明确排除 |
@@ -258,7 +267,8 @@
 
 ### 4.5 测试向量 `fixtures/links/vectors.json`（L1）
 
-- 共 137 条：生成 19 条，解析 118 条。解析的 118 条里，规范写法和 scheme 写法（`p-`）37 条，应当拒绝、判为“不是我们的”或别的发布线的（`x-`）65 条，旧写法（`l-`，只剩 matrix.to）7 条，旧写法里应当拒绝的（`lx-`）9 条。每条都附一句说明。
+- 共 149 条（第八轮起）：生成 23 条，解析 126 条。解析的 126 条里，规范写法和 scheme 写法（`p-`）48 条，应当拒绝、判为“不是我们的”或别的发布线的（`x-`）61 条，旧写法（`l-`，只剩 matrix.to）9 条，旧写法里应当拒绝的（`lx-`）8 条。每条都附一句说明。
+- 第八轮（开放联邦，137 → 149）：别的服务器的 5 条从拒绝改成链接，并改名：`x-foreign-user` → `p-foreign-user`、`x-foreign-alias` → `p-foreign-alias`、`x-foreign-old-room` → `p-foreign-old-room`、`x-port-mismatch` → `p-port-other`、`lx-foreign-user` → `l-matrixto-foreign-user`；`b-foreign-user` 改成生成链接。`l-matrixto-room-v12`、`l-matrixto-event` 现在读出 `via`。新增 12 条 `via`：生成 `b-foreign-room-via`、`b-room-v12-via`、`b-alias-event-via`、`b-bad-via`；解析 `p-room-via`、`p-alias-event-via`、`p-scheme-room-via`、`p-via-normalised`（小写、去重、只留 3 个、IPv6）、`p-via-invalid-skipped`（坏值跳过、`VIA` 不算、其他参数忽略）、`p-via-fragment-ignored`、`p-user-via-ignored`、`l-matrixto-via-foreign`。`p-query-hash-ignored`（task 上的 `via` 照旧忽略）不变。生成向量的输入都已经是规范化之后的 `via`，来回才能相等；规范化本身由解析向量钉住，生成端的规范化由各实现自己的单测覆盖。
 - 第一版 75 条；C1 安全评审第二轮补了 37 条（把 C1 实现时自己定的规则写回本规格和向量，再加上 ID 语法收紧、长度上限、凭据、`#/user/` 写法），见 §12 第二轮。
 - 用了三份**测试用的、按构建划分**的配置，不代表真实部署：`prod`（iOS 和 macOS 的 scheme 是 `zymi`）；`dev`（向量里的 `server_name` 用 `zymi.app`，**只是测试值**；真实 dev 线 11-13 实测是 `dev.zymi.app`（U6：dev 上 `POST /v1/matrix/session` 给的 Matrix 用户 ID 都以 `:dev.zymi.app` 结尾），部署配置 `config/lanes/dev.json` 用的是实测值；iOS 和 macOS 的 scheme 都是 `zymi-dev`）；`local`（zim Debug 连本地 E2E 栈，`localhost:8448`，`zymi-debug`）。scheme 按 §5.3 的表。解析器接受配置里列出的每一个 scheme。
 - 覆盖到的情况：
@@ -339,7 +349,7 @@ lane = {
 - **配置校验**：每个函数先校验配置，通不过就抛错（§4.3）：
   - `hosts` 不能为空；每个 host 必须是 WHATWG URL 序列化后的写法（小写、punycode、不带默认端口、不带路径和凭据）；同一个 host 不能出现两次，也不能同时属于两条发布线。
   - 别的发布线名字不能为空、不能重复；别的发布线的 scheme 和平台 scheme 的要求一样，不能是本构建的 scheme，也不能同时属于两条线。
-  - `server_name` 是小写的合法 server name。
+  - `server_name` 是小写的合法 server name。第八轮起它**不参与任何判定**（开放联邦，不再检查服务器名），只记录本发布线的服务器；字段保留，是为了不动各端的绑定和配置（TS 配置多一个或少一个字段都会抛错）。下一次接口清理时再决定删不删。
   - 平台 scheme 是 `[a-z][a-z0-9+.-]*`，不能是 `http`、`https`、`matrix`、`javascript`、`data`、`file`、`blob`、`about`、`ws`、`wss`、`ftp`，也不能是**别的产品的 scheme**：`zymix`、`zymixdemo`、`siuper`、`unseal`（L1b；zymi-core `FOREIGN_SCHEMES`，和 `connectors.rs` 的回调 scheme 保留表同一个意思）。别的发布线的 scheme 也一样。
   - 旧前缀是序列化后的 `https` URL（带路径，不带凭据、query 和片段），不能在任何发布线的 host 上。
 
@@ -409,7 +419,7 @@ lane = {
 ### 6.5 落地页（B5：边缘函数托管）
 
 - **边缘函数：**
-  - 凡是规范路径前缀下的请求，都由函数用同一个 JS 解析器判断：合法的返回 200 加页面；`reject` 的返回 **404** 加同一个页面；显示的话和 App 一致（§4.3）：`malformed`、`foreign_server` 是“链接无效”，`unknown_kind` 是“打不开这个链接，可能需要更新 App”，`reserved` 是“请更新 App”；`other_lane` 的返回 200 加提示。
+  - 凡是规范路径前缀下的请求，都由函数用同一个 JS 解析器判断：合法的返回 200 加页面；`reject` 的返回 **404** 加同一个页面；显示的话和 App 一致（§4.3）：`malformed` 是“链接无效”（`foreign_server` 第八轮删掉），`unknown_kind` 是“打不开这个链接，可能需要更新 App”，`reserved` 是“请更新 App”；`other_lane` 的返回 200 加提示。
   - `/.well-known/*` 由配置生成，Content-Type 是 `application/json`，返回 200，不能重定向。
   - 其余路径一律回退到首页（SPA 回退）。
   - **托管必须把原始路径交给函数，不能先解码**，这样 `%2F` 才能保留下来（P3 有专门的检查）。
@@ -434,6 +444,8 @@ lane = {
 | `https://matrix.to/#/…` | `LinkRouter` 认 | 我们没法声明这个域名的归属 | 由 matrix.org 的页面处理，我们管不了 |
 | 已经发出去的 pill（matrix.to 写法） | 继续能用 | — | — |
 
+**第八轮（开放联邦）的推出顺序**同样是先解析、后生成：先上线落地页和各端的解析器（读别的服务器的 ID 和 `via`），再上线生成器。顺序反过来的话，已经装着的旧版 App 和旧落地页会把新生成的、别的服务器的链接判成“链接无效”（旧规则的 `foreign_server`）。已经发出去的 matrix.to 链接照旧能读，读出来的 `via` 也会带上。
+
 只有 matrix.to 一种旧写法。旧落地页 `https://dev.unseal.chat/AgentMessenger/to-share/#/…`、ZYMIX 的 `zymix://unseal/…`、`zymixdemo://unseal/…` 和 `matrix:` URI 不再读（B1）：iOS 和 Mac 都当成 `not_ours`，按 §5.2 的规则处理（App 内点到的，非 http(s) 不交给系统；系统送进来的，交回原来的处理逻辑或丢掉）。
 
 **推出顺序：**
@@ -455,7 +467,11 @@ lane = {
 ### 8.2 冒充和劫持
 
 - **scheme 谁都能注册。** scheme 链接里不放令牌；加入房间、发起私聊、接受邀请这类会改状态的动作，都要先在 App 内确认。确认页显示的是登录后从自家服务器取来的房间名和成员数，而不是消息里的链接文字。
-- **服务器名检查只用在用户 ID、别名和 v12 之前的房间 ID 上**（不开联邦；B1 定了只做 Zymi）。v12 的房间 ID 和房间 v3 起的事件 ID 都没有服务器部分（v1、v2 的 `$opaque:server` 有，但不检查）：规范链接和 scheme 链接里的，归 host 或 scheme 所在的发布线；旧链接里的，按当前发布线去打开，自家服务器说找不到就显示“打不开”。`via` 一律不参与解析。
+- **不检查服务器名**（第八轮，开放联邦；登录仍然只有 Zymi 账号）。链接归哪条发布线只看 host 或 scheme。ID 在哪台服务器上都能生成和解析，代价和对策：
+  - **我们的域名会出现在别的服务器的身份上**（`https://to.zymi.app/u/admin:evil.example`）。对策：落地页对访客只显示类型（§8.3，不变），不显示 ID 和名字；App 的资料页和加入确认页显示**完整 ID 含服务器名**，服务器不是本发布线 `server_name` 的，额外标一句“来自 <服务器>”。（这是 `server_name` 留下来唯一的用处，只用于显示，不用于判定。）
+  - **`via` 指向任意服务器。** 落地页不用 `via` 请求任何东西（D4、CSP 不变）；App 只在用户确认加入之后，才把 `via` 交给 homeserver 的 join 请求，请求由我们的 homeserver 通过联邦发出，客户端自己不连 `via` 里的服务器。
+  - 本发布线的 homeserver 必须打开联邦，否则别的服务器的房间和用户打不开，App 显示“打不开这个链接”。
+- v12 的房间 ID 和房间 v3 起的事件 ID 都没有服务器部分：靠 `via` 找到房间；没有 `via` 的，按当前发布线的 homeserver 去打开，找不到就显示“打不开”。
 - **用独立的域名。** 不能和 ZYMIX 共用（理由见 §3）。
 
 ### 8.3 没登录的访客能看到什么
@@ -706,8 +722,31 @@ lane = {
 
 | 项 | 处理 | 说明 |
 |---|---|---|
-| D3 | 推翻一半 | 旧写法仍只认 matrix.to（解析不变）；**生成**一律用规范链接，@ 提及的 pill 和名片（`ChatContact`）也是 `/u/<user>`。代价：不认这个 host 的客户端（Element、已装的旧版 ZIM 和 Android）把新 pill 显示成普通链接；通知靠 `m.mentions`，不受影响。生成不了的（别的服务器的用户，`foreign_server`）照旧发 matrix.to |
+| D3 | 推翻一半 | 旧写法仍只认 matrix.to（解析不变）；**生成**一律用规范链接，@ 提及的 pill 和名片（`ChatContact`）也是 `/u/<user>`。代价：不认这个 host 的客户端（Element、已装的旧版 ZIM 和 Android）把新 pill 显示成普通链接；通知靠 `m.mentions`，不受影响。生成不了的（别的服务器的用户，`foreign_server`）照旧发 matrix.to（第八轮开放联邦后不再有 `foreign_server`，见第八轮 F2） |
 | B2 | 已定（先用） | 见 §0.1 |
 | I1a | 改成一个双向注入点 | IMKit `ChatLinkBuilder`（IMCore），宿主启动时 `ChatShareLinks.install` 一次：`link(forMatrixTo:)` 把 IMKit 生成的 matrix.to 换成宿主的链接，`matrixTo(for:)` 把宿主的链接读回 matrix.to，供识别 pill 和名片。IMKit 里所有生成点（房间、空间、消息、资料页、pill、名片）和识别点（`MatrixHTML`、富文本编辑器、`ChatContact`）都经过它；不装时行为不变。`MatrixConfiguration.shareLinks`（旧落地页的片段写法）保留，对设置它的客户端优先。`ChatLinkOpener` 不在本轮 |
 | Z2 | 实现 | zim `ZimShareLinks`：zymi-core `linkParse`（matrix.to）→ `linkBuild`，反向 `linkParse` → matrix.to。Debug `ZIM_E2E_SHARE_LINKS=matrixto` 不装（对照）。E2E：`MessageShareTests` L1/L5–L8、`SpaceSettingsTests` A12、`MentionTests` M2 |
 | S2 | 待定 | zymi-ios 先要合 `feat/zymi-core-sign-in` 和 `feat/zymi-deeplink-core`（接上 ZymiCore 的 links），再照 zim 装 builder |
+
+### 第八轮：开放联邦（负责人 11-24）
+
+负责人原话：「从我们app分享的都要是我们自己的分享链接」「现在开放联邦，更新spec」「其他服务器的用户在zymi无法登录，我们只提供zymi的登录账号体系」。起因：分享 Unseal 服务器上的房间时，生成器报 `foreign_server`，宿主退回 matrix.to（第七轮 D3 的最后一句）。
+
+| 编号 | 改了哪一节 | 内容 |
+|---|---|---|
+| F1 | §0.1 B1、§0.2 D3 和 D4 | 开放联邦：能链接的 Matrix 实体不再限于本服务器。登录仍然只有 Zymi 账号（B1 的账号部分不变）。D3：App 分享出去的不再有 matrix.to；D4：不检查服务器名，链接归属只看 host 和 scheme |
+| F2 | §4.1 第 6 条、§4.2 第 8 条、§4.3 | 生成和解析都**不再检查服务器名**；`foreign_server` 从解析结果和生成错误里删掉（绑定可以把枚举值留到下一次接口清理，但不再返回）。只放开生成不够：宿主是先把 IMKit 的 matrix.to 解析一遍再生成的，解析那一步原来就会拒绝 |
+| F3 | §4.1 第 1、7、9 条，§4.2 第 9 条、旧片段写法，§4.3 形状，§4.4 | 房间和别名（含消息链接）带 `via`：生成 `?via=<s>&via=<s>`（合法 server name、小写、按顺序去重、最多 3 个、按 §4.1 第 4 条编码）；解析时从规范链接、scheme 链接和 matrix.to 的 query 读 `via`，坏值跳过、不判整条 `malformed`。别的 kind 的 query 照旧整个忽略。v12 房间 ID 没有服务器部分，别的服务器的房间要靠它才加得进去 |
+| F4 | §5.3 | `server_name` 保留在配置里，但不参与任何判定；只用于 App 显示“来自 <服务器>”（§8.2）。不删是为了不动各端绑定和 TS 配置的严格校验 |
+| F5 | §4.1 第 8 条 | ID 语法的收紧**保留**，理由改成“挡显示和真实不一致的字符”，联邦以后更需要。超出语法的 ID（主流服务端不生成）报 `invalid_id`，宿主退回 matrix.to：这是唯一还会出现 matrix.to 的情况 |
+| F6 | §8.2 | 新的风险和对策：我们的域名会出现在别的服务器的身份上 → 落地页只显示类型（不变），App 显示完整 ID 并标“来自 <服务器>”；`via` 只在用户确认加入后交给 homeserver 的 join，客户端和落地页都不连它；homeserver 必须打开联邦 |
+| F7 | §7 | 推出顺序：先上线落地页和各端的解析器，再上线生成器；否则旧版 App 和旧落地页把新链接判成“链接无效” |
+| F8 | §4.5、`vectors.json` | 137 → 149，见 §4.5 第八轮那一条 |
+| F9 | §6.5 | 负责人（11-24）：「不加其他客户端的，优先zymi的」。落地页对外部房间和用户**不**提供“用其他 Matrix 客户端打开”（不给 matrix.to 出口），只有“在 Zymi 中打开”和下载。代价已知：收到链接的 Unseal、Element 用户不能用自己的客户端打开 |
+
+各端要跟着改的（按 F7 的顺序）：
+
+1. 落地页（本仓库）：`landing/links.js` 去掉三处服务器名检查，加 `via` 的生成和解析；`scripts/check-landing.mjs` 里 `foreign-en` 这一条改成期望页面正常；`npm test` 跑全部向量。
+2. zymi-services：`crates/zymi-core/src/links.rs` 同上，`DeepLink` 的房间两种加 `via`；FFI 和 wasm 的绑定加字段；`fixtures/links/vectors.json` 从本仓库复制；`docs/links.md` 同步；重新出 xcframework 和 wasm。
+3. zim 和 zymi-ios：`ZimShareLinks` 和 `ZymiShareLinks` 的 `matrixTo(for:)` 把 `via` 写回 matrix.to（IMKit 的 `ChatLink` 读得懂 `?via=`），换上新的 ZymiCore；资料页和加入确认页显示“来自 <服务器>”（F6，可以单独排期）。
+4. homeserver：dev 线打开联邦（运维，不在本仓库）。

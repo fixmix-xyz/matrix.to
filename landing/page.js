@@ -92,11 +92,12 @@ function read() {
         if (verdict.link) {
             const built = linkBuild(verdict.link, links);
             // Only ever an address rebuilt from the parse result (vector lx-protocol-relative), on this origin.
-            if (built.url) return { redirect: new URL(built.url).pathname };
+            if (built.url) { const rebuilt = new URL(built.url); return { redirect: rebuilt.pathname + rebuilt.search }; }
         }
         return { verdict };
     }
-    return { verdict: linkParse(`https://${links.hosts[0]}${location.pathname}`, links) };
+    // The query too: a room link's via (§4.2 rule 9) goes on to the handoff.
+    return { verdict: linkParse(`https://${links.hosts[0]}${location.pathname}${location.search}`, links) };
 }
 
 function element(tag, attributes = {}, text) {

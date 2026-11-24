@@ -5,6 +5,7 @@
 //   node scripts/test-links.mjs                      # the real parser
 //   node scripts/test-links.mjs --mutate empty-segment   # mutation control: must FAIL (lx-protocol-relative…)
 //   node scripts/test-links.mjs --mutate no-kind-check   # mutation control: must FAIL (x-zymi-encoded-slash…)
+//   node scripts/test-links.mjs --mutate via-no-cap      # mutation control: must FAIL (p-via-normalised)
 //   node scripts/test-links.mjs --json out.json      # also write a per-vector report
 import fs from "node:fs/promises";
 import os from "node:os";
@@ -23,6 +24,9 @@ const MUTATIONS = {
     // zymi-core links::own_scheme (zymi-services 56c16ec6): the reserved table has mailto/tel/sms/maps, and a scheme is 2+ characters.
     "reserved-short": [', "mailto", "tel", "sms", "maps"];', '];'],
     "one-char-scheme": ["/^[a-z][a-z0-9+.-]+$/", "/^[a-z][a-z0-9+.-]*$/"],
+    // Round 8 (via): no cap must fail p-via-normalised; dropping the fragment's via must fail l-matrixto-room-v12.
+    "via-no-cap": ["if (out.length === MAX_VIA) break;", ""],
+    "legacy-no-via": ["const via = query >= 0 ? readVia(rest.slice(query + 1)) : [];", "const via = [];"],
 };
 
 async function loadLinks() {

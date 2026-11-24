@@ -91,7 +91,7 @@ function get(rawPath) {
 const S = site.config.links.server_name;
 const httpCases = [
     ["/task/deck", 200], ["/task/a%2Fb", 404], [`/r/a%2Fb:${S}`, 200], ["/invite/ABC123", 404], [`/U/x:${S}`, 404],
-    ["/u/x:evil.example", 404], ["/roomid/owtPMO14G1v6Yl9KlRjjDmlKdVC5NbSUPqbiF2Fru30/e/Lh9m3k_ZqXo", 200], ["/", 200],
+    ["/u/x:evil.example", 200 /* round 8: federation open */], ["/roomid/owtPMO14G1v6Yl9KlRjjDmlKdVC5NbSUPqbiF2Fru30/e/Lh9m3k_ZqXo", 200], ["/", 200],
     ["/settings/%E5%AE%98%E6%96%B9%E5%AE%A2%E6%9C%8D", 404], ["/anything/else", 404], ["//task/deck", 404],
 ];
 for (const [rawPath, expected] of httpCases) {
@@ -159,7 +159,10 @@ const pageCases = [
         { kind: "user", user_id: `@0b1f0c3e-9a52-4b6e-8f1d-2c3b4a5d6e70:${S}` }],
     ["goal-en-mac", "/goal/g_7Kx2", "mac", "en-US", "link", "This is a Zymi goal link", { kind: "goal", id: "g_7Kx2" }],
     ["invalid-zh", "/task/a%2Fb", "iphone", "zh-CN", "malformed", "链接无效", null],
-    ["foreign-en", "/u/x:evil.example", "iphone", "en-US", "foreign_server", "This link isn't valid", null],
+    // Round 8 (federation open): another server's user is a link, its id never echoed; a room's via reaches the handoff.
+    ["foreign-user-en", "/u/x:evil.example", "iphone", "en-US", "link", "This is a Zymi user link", { kind: "user", user_id: "@x:evil.example" }],
+    ["room-via-zh-iphone", "/roomid/owtPMO14G1v6Yl9KlRjjDmlKdVC5NbSUPqbiF2Fru30?via=evil.example", "iphone", "zh-CN", "link", "这是一个 Zymi 的聊天室链接",
+        { kind: "room", room_id: "!owtPMO14G1v6Yl9KlRjjDmlKdVC5NbSUPqbiF2Fru30", via: ["evil.example"] }],
     ["unknown-kind-zh", `/U/x:${S}`, "iphone", "zh-CN", "unknown_kind", "打不开这个链接，可能需要更新 App", null],
     ["reserved-en", "/invite/ABC123", "iphone", "en-US", "reserved", "Please update the app", null],
     ["no-echo-settings-zh", "/settings/%E5%AE%98%E6%96%B9%E5%AE%A2%E6%9C%8D", "iphone", "zh-CN", "unknown_kind", "打不开这个链接，可能需要更新 App", null],

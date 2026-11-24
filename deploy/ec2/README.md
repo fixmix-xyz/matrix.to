@@ -82,8 +82,9 @@ From anywhere:
 - `curl -sI https://to-dev.zymi.app/task/a%2Fb` → 404 with the CSP header. The ALB's own 404 has no CSP, so the
   header proves the listener rule sends the name to the page.
 - `curl -sI 'https://to-dev.zymi.app/r/a%2Fb:dev.zymi.app'` → **200**, while `/r/a/b:dev.zymi.app` → 404. Only an
-  undecoded `%2F` makes that room alias valid, so this pair proves the path arrived as sent. (`:zymi.app` is
-  another server and 404s.)
+  undecoded `%2F` makes that room alias valid, so this pair proves the path arrived as sent.
+- `curl -sI 'https://to-dev.zymi.app/r/develop:topsecret.network'` → **200** (SPEC-deeplink round 8: another
+  server's room is a link too; before round 8 it was 404 and the page said the link isn't valid).
 - `curl -s https://to-dev.zymi.app/.well-known/apple-app-site-association` → 200, `application/json`, no redirect,
   `appIDs` from `config/lanes/dev.json`.
 - `curl -s https://app-site-association.cdn-apple.com/a/v1/to-dev.zymi.app` → the same `appIDs`. iOS fetches the
