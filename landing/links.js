@@ -22,6 +22,8 @@ limitations under the License.
 
 /** The longest input `linkParse` reads whole (§4.2 rule 0). */
 export const MAX_LINK_INPUT_BYTES = 4096;
+/** At most this many `via` servers on a room link (§4.1 rule 9). */
+export const MAX_VIA = 3;
 const MAX_MATRIX_ID_BYTES = 255;
 const MAX_ZYMI_ID_BYTES = 128;
 
@@ -105,7 +107,6 @@ function withServer(id, sigil, localpartOk) {
 }
 
 const asciiLower = text => text.replace(/[A-Z]/g, c => c.toLowerCase());
-const serverPart = id => { const i = id.indexOf(":"); return i < 0 ? "" : id.slice(i + 1); };
 
 /** Matrix and Zymi ids (§4.1 rule 8); each returns the normalised id or null. */
 export const ids = {
@@ -286,7 +287,7 @@ function classify(url, config) {
             if (credentials) fail("malformed");
             const segments = pathSegments(url.pathname);
             if (!segments) return { not_ours: true };
-            return { link: grammar(segments, config), source: "canonical" };
+            return { link: grammar(segments, url.search.slice(1)), source: "canonical" };
         }
         const lane = config.other_lanes.find(l => listed(l.hosts));
         if (lane) return { other_lane: lane.name };
@@ -295,7 +296,7 @@ function classify(url, config) {
             // `url.hash` is "" both for no fragment and for an empty one; neither starts with "#/".
             if (!url.hash.startsWith("#/")) return { not_ours: true };
             if (credentials) fail("malformed");
-            return legacyFragment(url.hash.slice(2), config);
+            return legacyFragment(url.hash.slice(2));
         }
         return { not_ours: true };
     }
@@ -304,7 +305,7 @@ function classify(url, config) {
         if (credentials || url.port !== "") fail("malformed");
         const segments = pathSegments(url.pathname);
         if (!segments) fail("malformed");
-        return { link: grammar(segments, config), source: "scheme" };
+        return { link: grammar(segments, url.search.slice(1)), source: "scheme" };
     }
     const lane = config.other_lanes.find(l => (l.schemes || []).includes(scheme));
     if (lane) return { other_lane: lane.name };
@@ -321,13 +322,14 @@ function pathSegments(path) {
     return segments;
 }
 
-/** §4.2 rules 4-8: the kind (literal, before decoding), then each id decoded once and validated. */
-function grammar(segments, config) {
+/** §4.2 rules 4-9: the kind (literal, before decoding), then each id decoded once and validated; `query` (without
+ * its `?`) gives a room link its via. */
+function grammar(segments, query) {
     const [kind, ...rest] = segments;
     if (kind === "invite" || kind === "team") fail("reserved");
     if (kind === "u") {
         if (rest.length !== 1) fail("malformed");
-        return user(`@${decode(rest[0])}`, config);
+        return user(`@${decode(rest[0])}`);
     }
     if (kind === "r" || kind === "roomid") {
         let event = null;
@@ -335,7 +337,7 @@ function grammar(segments, config) {
         else if (rest.length !== 1) fail("malformed");
         const sigil = kind === "r" ? "#" : "!";
         const eventId = event === null ? null : `$${decode(event)}`;
-        return room(`${sigil}${decode(rest[0])}`, eventId, config);
+        return room(`${sigil}${decode(rest[0])}`, eventId, readVia(query));
     }
     if (ZYMI_KINDS.includes(kind)) {
         if (rest.length !== 1) fail("malformed");
@@ -346,38 +348,57 @@ function grammar(segments, config) {
     fail("unknown_kind");
 }
 
-function onLane(server, config) {
-    return server.toLowerCase() === config.server_name.toLowerCase();
-}
+// No server-name check (round 8, federation open): a user, alias or room on any server is a link.
 
-function user(id, config) {
+function user(id) {
     const userId = ids.user(id);
     if (userId === null) fail("malformed");
-    if (!onLane(serverPart(userId), config)) fail("foreign_server");
     return { kind: "user", user_id: userId };
 }
 
-function room(id, event, config) {
+/** §4.1 rule 9: valid server names, lower-cased, de-duplicated in order, the first 3. */
+function normaliseVia(values) {
+    const out = [];
+    for (const value of values) {
+        const server = asciiLower(value);
+        if (!out.includes(server)) out.push(server);
+        if (out.length === MAX_VIA) break;
+    }
+    return out;
+}
+
+/** §4.2 rule 9: the `via` values of a query (no `?`); a value that is empty, badly encoded or not a server name is
+ * skipped, never the whole link. */
+function readVia(query) {
+    const values = [];
+    for (const item of query.split("&")) {
+        const eq = item.indexOf("=");
+        if (eq < 0 || item.slice(0, eq) !== "via") continue;
+        let value;
+        try { value = decode(item.slice(eq + 1)); } catch (error) { if (error instanceof Rejected) continue; throw error; }
+        if (isServerName(value)) values.push(value);
+    }
+    return normaliseVia(values);
+}
+
+function room(id, event, via) {
     let eventId;
     if (event !== null) {
         eventId = ids.event(event);
         if (eventId === null) fail("malformed");
     }
     let link;
-    let server = null;
     if (id.startsWith("#")) {
         const alias = ids.alias(id);
         if (alias === null) fail("malformed");
-        server = serverPart(alias);
         link = { kind: "room", room_alias: alias };
     } else {
         const roomId = ids.room(id);
         if (roomId === null) fail("malformed");
-        if (roomId.includes(":")) server = serverPart(roomId);
         link = { kind: "room", room_id: roomId };
     }
     if (eventId !== undefined) link.event_id = eventId;
-    if (server !== null && !onLane(server, config)) fail("foreign_server");
+    if (via.length) link.via = via;
     return link;
 }
 
@@ -402,9 +423,11 @@ function decode(segment) {
     return text;
 }
 
-/** The legacy `#/<sigil id>[/<$event>][?…]` fragment on a listed base. `rest` is the fragment after `#/`. */
-function legacyFragment(rest, config) {
+/** The legacy `#/<sigil id>[/<$event>][?…]` fragment on a listed base. `rest` is the fragment after `#/`; its query
+ * gives a room its via (§4.2 rule 9). */
+function legacyFragment(rest) {
     const query = rest.indexOf("?");
+    const via = query >= 0 ? readVia(rest.slice(query + 1)) : [];
     if (query >= 0) rest = rest.slice(0, query);
     const parts = rest.split("/");
     const identifier = parts[0] ?? "";
@@ -414,13 +437,13 @@ function legacyFragment(rest, config) {
         if (event === null) fail("malformed");
         const userId = decode(event);
         if (!userId.startsWith("@")) fail("malformed");
-        return { link: user(userId, config), source: "matrix_to" };
+        return { link: user(userId), source: "matrix_to" };
     }
     const id = decode(identifier);
     const eventId = event === null ? null : decode(event);
     let link;
-    if (id.startsWith("@") && eventId === null) link = user(id, config);
-    else if (id.startsWith("#") || id.startsWith("!")) link = room(id, eventId, config);
+    if (id.startsWith("@") && eventId === null) link = user(id);
+    else if (id.startsWith("#") || id.startsWith("!")) link = room(id, eventId, via);
     else if (id.startsWith("+")) fail("unknown_kind");
     else fail("malformed");
     return { link, source: "matrix_to" };
@@ -440,8 +463,17 @@ export function encodeId(id) {
 
 class BuildError { constructor(code) { this.code = code; } }
 
-function linkPath(link, config) {
-    const check = server => { if (!onLane(server, config)) throw new BuildError("foreign_server"); };
+/** §4.1 rule 9: `?via=<s>&via=<s>` for a room link's via (none when empty); a value that isn't a server name is
+ * `invalid_id`. */
+function viaQuery(via) {
+    if (via === undefined) return "";
+    if (!Array.isArray(via) || via.some(v => typeof v !== "string" || !isServerName(v))) throw new BuildError("invalid_id");
+    const servers = normaliseVia(via);
+    return servers.length ? `?${servers.map(s => `via=${encodeId(s)}`).join("&")}` : "";
+}
+
+/** The path and query of a link (§4.1); no server-name check (round 8). */
+function linkPath(link) {
     const valid = value => { if (value === null || value === undefined) throw new BuildError("invalid_id"); return value; };
     const eventPart = event => {
         if (event === undefined || event === null) return "";
@@ -450,19 +482,16 @@ function linkPath(link, config) {
     switch (link && link.kind) {
         case "user": {
             const id = valid(typeof link.user_id === "string" ? ids.user(link.user_id) : null);
-            check(serverPart(id));
             return `/u/${encodeId(id.slice(1))}`;
         }
         case "room": {
             if (typeof link.room_alias === "string" && link.room_id === undefined) {
                 const alias = valid(ids.alias(link.room_alias));
-                check(serverPart(alias));
-                return `/r/${encodeId(alias.slice(1))}${eventPart(link.event_id)}`;
+                return `/r/${encodeId(alias.slice(1))}${eventPart(link.event_id)}${viaQuery(link.via)}`;
             }
             if (typeof link.room_id === "string" && link.room_alias === undefined) {
                 const roomId = valid(ids.room(link.room_id));
-                if (roomId.includes(":")) check(serverPart(roomId));
-                return `/roomid/${encodeId(roomId.slice(1))}${eventPart(link.event_id)}`;
+                return `/roomid/${encodeId(roomId.slice(1))}${eventPart(link.event_id)}${viaQuery(link.via)}`;
             }
             throw new BuildError("invalid_id");
         }
@@ -483,17 +512,17 @@ function attempt(make) {
     }
 }
 
-/** `{url}` (the canonical `https://<hosts[0]>/<kind>/<id>[/e/<event>]`) or `{error}`. */
+/** `{url}` (the canonical `https://<hosts[0]>/<kind>/<id>[/e/<event>][?via=…]`) or `{error}`. */
 export function linkBuild(link, config) {
     validateConfig(config);
-    return attempt(() => `https://${config.hosts[0]}${linkPath(link, config)}`);
+    return attempt(() => `https://${config.hosts[0]}${linkPath(link)}`);
 }
 
 /** `{url}` (the same path behind `<scheme>://open` for `platform`'s app) or `{error}` (also `no_scheme`). */
 export function linkHandoff(link, config, platform) {
     validateConfig(config);
     return attempt(() => {
-        const path = linkPath(link, config);
+        const path = linkPath(link);
         const scheme = config.schemes[platform];
         if (!scheme) throw new BuildError("no_scheme");
         return `${scheme}://open${path}`;
